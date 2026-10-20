@@ -1,1 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+temp_data.db
+temp_data.db-*
 .DS_Store
