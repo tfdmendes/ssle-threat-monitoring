@@ -1,3 +1,7 @@
 *
 !registry.py
 !requirements.txt
+!storage.py
+!ingestion.py
+!analytics.py
+!sensor.py
