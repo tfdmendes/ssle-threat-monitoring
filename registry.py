@@ -1,3 +1,10 @@
+"""
+Keep the addresses of programs such as ingestion and storage
+
+Other programs use this list to know where to send requests
+Keep a separate entry for each copy of the same program
+"""
+
 from datetime import datetime, timezone
 from flask import Flask, jsonify, request
 
