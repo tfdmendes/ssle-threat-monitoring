@@ -1,0 +1,23 @@
+# PersistentVolumeClaim (PVC)
+# Requests persistent storage for a Pod, so data survives Pod restarts
+# or replacements
+#
+# Pod (/data) -> PVC (storage request) -> PV (actual storage)
+#
+# local-path: Stores data locally on a k3s node
+# ReadWriteOnce: Allows read/write access from a single node
+# 1Gi: Requests 1 GiB of storage
+
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ssle-storage-data
+  namespace: ssle
+spec:
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

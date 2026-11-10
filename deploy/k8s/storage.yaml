@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssle-storage
+  namespace: ssle
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ssle-storage
+  template:
+    metadata:
+      labels:
+        app: ssle-storage
+    spec:
+      containers:
+        - name: storage
+          image: ssle-storage:dev
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 5002
+          readinessProbe:
+            httpGet:
+              path: /stats
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+          # Mount persistent storage where SQLite creates its file
+          volumeMounts:
+            - name: storage-data
+              mountPath: /data
+      volumes:
+        - name: storage-data
+          persistentVolumeClaim:
+            claimName: ssle-storage-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ssle-storage
+  namespace: ssle
+spec:
+  selector:
+    app: ssle-storage
+  ports:
+    - name: http
+      port: 5002
+      targetPort: http

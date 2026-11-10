@@ -14,7 +14,7 @@ Temperature Sensor
        | INSERT
        v
     SQLite DB
-  (temp_data.db)
+  (readings.db)
        |
        | SELECT AVG(temperature)
        v
@@ -32,7 +32,7 @@ import sqlite3
 
 app = Flask(__name__)
 
-DB = 'temp_data.db'
+DB = 'readings.db'
 
 
 @app.route('/average', methods=['GET'])

@@ -14,7 +14,7 @@ Temperature Sensor
        | INSERT INTO temperatures
        v
   SQLite Database
-   (temp_data.db)
+   (readings.db)
    
    
    The Storage Service receives HTTP requests and uses SQLite to store the data
@@ -28,7 +28,7 @@ import sqlite3
 
 app = Flask(__name__)
 
-DB = 'temp_data.db'
+DB = 'readings.db'
 
 
 def init_db():
@@ -64,6 +64,29 @@ def store():
     conn.close()
 
     return jsonify({"status": "stored"}), 200
+
+
+
+@app.route("/stats", methods=["GET"])
+def get_stats():
+    conn = sqlite3.connect(DB)     # Open the database that holds the temperature readings
+
+    try:
+        # Count the readings and add their temperatures
+        count, total = conn.execute(
+            # COALESCE makes it so that the sum is 0 when there's no readings 
+            """
+            SELECT COUNT(temperature),
+                   COALESCE(SUM(temperature), 0)
+            FROM temperatures
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    # Return the values that analytics needs to calculate the average
+    return jsonify({"count": count, "sum": total})
+
 
 
 if __name__ == '__main__':
