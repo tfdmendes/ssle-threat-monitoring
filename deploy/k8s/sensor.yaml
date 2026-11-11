@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ssle-sensor
+  namespace: ssle
+spec:
+  replicas: 1
+  # Avoid overlapping producers with the same device identity during updates
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ssle-sensor
+  template:
+    metadata:
+      labels:
+        app: ssle-sensor
+    spec:
+      containers:
+        - name: sensor
+          image: ssle-sensor:dev
+          imagePullPolicy: Never
+          env:
+            - name: DEVICE_ID
+              value: sensor-k8s-001
+            - name: INGESTION_URL
+              value: http://ssle-ingestion:5001/ingest

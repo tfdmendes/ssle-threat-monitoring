@@ -1,55 +1,47 @@
 """
-Temperature Sensor
-       |
-       | POST /ingest
-       v
- Ingestion Service
-     :5001
-       |
-       | POST /store
-       v
-  Storage Service
-     :5002
-       |
-       | INSERT
-       v
-    SQLite DB
-  (readings.db)
-       |
-       | SELECT AVG(temperature)
-       v
- Analytics Service
-     :5003
-       |
-       | GET /average
-       v
-   HTTP Client
+Read temperature statistics from storage over HTTP and calculate their average
 """
 
+import math
+import os
 
+import requests
 from flask import Flask, jsonify
-import sqlite3
 
 app = Flask(__name__)
 
-DB = 'readings.db'
+STORAGE_URL = os.environ.get("STORAGE_URL", "http://127.0.0.1:5002") # Cant acess the sql directly anymore
+REQUEST_TIMEOUT = 5
 
 
-@app.route('/average', methods=['GET'])
+@app.route("/average", methods=["GET"])
 def average_temp():
-    conn = sqlite3.connect(DB)
-    c = conn.cursor()
+    try:
+        response = requests.get(f"{STORAGE_URL}/stats", timeout=REQUEST_TIMEOUT)
+        response.raise_for_status()
+    except requests.Timeout:
+        return jsonify({"error": "Storage request timed out"}), 504
+    except requests.RequestException:
+        return jsonify({"error": "Could not retrieve storage statistics"}), 502
 
-    c.execute("SELECT AVG(temperature) FROM temperatures")
+    try:
+        stats = response.json()
+        count = stats["count"]
+        total = stats["sum"]
+        if (
+            type(count) is not int
+            or count < 0
+            or isinstance(total, bool)
+            or not isinstance(total, (int, float))
+            or not math.isfinite(total)
+        ):
+            raise ValueError("Invalid storage statistics")
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return jsonify({"error": "Invalid storage statistics"}), 502
 
-    avg = c.fetchone()[0]
-
-    conn.close()
-
-    return jsonify({
-        "average_temperature": round(avg, 2) if avg is not None else None
-    })
+    average = round(total / count, 2) if count else None
+    return jsonify({"average_temperature": average})
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     app.run(port=5003)

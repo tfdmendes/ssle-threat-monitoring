@@ -1,10 +1,11 @@
+import os
 import random
 import time
 
 import requests
 
-DEVICE_ID = "sensor-001"
-INGESTION_URL = "http://127.0.0.1:5001/ingest"
+DEVICE_ID = os.environ.get("DEVICE_ID", "sensor-001")
+INGESTION_URL = os.environ.get("INGESTION_URL", "http://127.0.0.1:5001/ingest")
 
 SEND_INTERVAL = 5
 REQUEST_TIMEOUT = 5
