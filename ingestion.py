@@ -25,7 +25,10 @@ import os
 import requests
 from flask import Flask, jsonify, request
 
+from instrumentation import configure_metrics
+
 app = Flask(__name__)
+configure_metrics(app)      # Pass the Flask app itself
 
 SERVICE_NAME = "ingestion-service"
 SERVICE_URL = os.environ.get("SERVICE_URL", "http://127.0.0.1:5001")
@@ -98,4 +101,3 @@ if __name__ == "__main__":
         raise SystemExit(f"Could not register ingestion service: {error}")
 
     app.run(host="127.0.0.1", port=5001)
-    

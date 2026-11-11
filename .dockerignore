@@ -3,5 +3,6 @@
 !requirements.txt
 !storage.py
 !ingestion.py
+!instrumentation.py
 !analytics.py
 !sensor.py
