@@ -1,4 +1,4 @@
-""""
+"""
 Temperature Sensor
        |
        | POST /ingest
@@ -28,10 +28,12 @@ import sqlite3
 
 app = Flask(__name__)
 
+# Docker uses /data as the working directory, placing readings.db on the volume
 DB = 'readings.db'
 
 
 def init_db():
+    # Create missing tables without deleting existing readings
     conn = sqlite3.connect(DB)
     c = conn.cursor()
 
@@ -52,14 +54,17 @@ def init_db():
 def store():
     data = request.get_json()
 
+    # Give each request its own connection rather than sharing one across threads
     conn = sqlite3.connect(DB)
     c = conn.cursor()
 
+    # Placeholders keep input values separate from SQL
     c.execute(
         "INSERT INTO temperatures (device_id, temperature) VALUES (?, ?)",
         (data["device_id"], data["temperature"])
     )
 
+    # Commit the write before reporting success to ingestion
     conn.commit()
     conn.close()
 
@@ -69,12 +74,12 @@ def store():
 
 @app.route("/stats", methods=["GET"])
 def get_stats():
-    conn = sqlite3.connect(DB)     # Open the database that holds the temperature readings
+    conn = sqlite3.connect(DB)
 
     try:
-        # Count the readings and add their temperatures
+        # Read count and sum from the same snapshot
+        # COALESCE returns zero instead of NULL for an empty table
         count, total = conn.execute(
-            # COALESCE makes it so that the sum is 0 when there's no readings 
             """
             SELECT COUNT(temperature),
                    COALESCE(SUM(temperature), 0)
@@ -84,7 +89,6 @@ def get_stats():
     finally:
         conn.close()
 
-    # Return the values that analytics needs to calculate the average
     return jsonify({"count": count, "sum": total})
 
 

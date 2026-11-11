@@ -10,7 +10,8 @@ from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-STORAGE_URL = os.environ.get("STORAGE_URL", "http://127.0.0.1:5002") # Cant acess the sql directly anymore
+# Storage owns SQLite and analytics only requests statistics over HTTP
+STORAGE_URL = os.environ.get("STORAGE_URL", "http://127.0.0.1:5002")
 REQUEST_TIMEOUT = 5
 
 
@@ -25,9 +26,11 @@ def average_temp():
         return jsonify({"error": "Could not retrieve storage statistics"}), 502
 
     try:
+        # Validate the response from storage before using its values in arithmetic
         stats = response.json()
         count = stats["count"]
         total = stats["sum"]
+        # Reject booleans and non-finite values before calculating the average
         if (
             type(count) is not int
             or count < 0
@@ -39,6 +42,7 @@ def average_temp():
     except (KeyError, TypeError, ValueError, OverflowError):
         return jsonify({"error": "Invalid storage statistics"}), 502
 
+    # No readings means no average, represented as JSON null
     average = round(total / count, 2) if count else None
     return jsonify({"average_temperature": average})
 

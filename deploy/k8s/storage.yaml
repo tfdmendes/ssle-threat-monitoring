@@ -28,7 +28,6 @@ spec:
               port: http
             periodSeconds: 10
             timeoutSeconds: 2
-          # Mount persistent storage where SQLite creates its file
           volumeMounts:
             - name: storage-data
               mountPath: /data

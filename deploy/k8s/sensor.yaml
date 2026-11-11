@@ -5,7 +5,6 @@ metadata:
   namespace: ssle
 spec:
   replicas: 1
-  # Avoid overlapping producers with the same device identity during updates
   strategy:
     type: Recreate
   selector:

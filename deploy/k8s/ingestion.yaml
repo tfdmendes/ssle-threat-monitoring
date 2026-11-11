@@ -21,16 +21,12 @@ spec:
             - name: http
               containerPort: 5001
           env:
-            # Advertise the stable ingestion address
             - name: SERVICE_URL
               value: http://ssle-ingestion:5001
-            # Send startup registration to the application registry
             - name: REGISTRY_URL
               value: http://ssle-registry:5050
-            # Forward validated readings to storage
             - name: STORAGE_URL
               value: http://ssle-storage:5002
-          # The server starts only after successful registration
           readinessProbe:
             tcpSocket:
               port: http

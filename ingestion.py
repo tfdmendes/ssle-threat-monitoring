@@ -28,11 +28,13 @@ from flask import Flask, jsonify, request
 from instrumentation import configure_metrics
 
 app = Flask(__name__)
-configure_metrics(app)      # Pass the Flask app itself
+# Attach /metrics and request hooks to this same Flask app
+configure_metrics(app)
 
 SERVICE_NAME = "ingestion-service"
 SERVICE_URL = os.environ.get("SERVICE_URL", "http://127.0.0.1:5001")
 
+# Kubernetes overrides the local defaults with stable Service addresses
 REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://127.0.0.1:5050")
 STORAGE_URL = os.environ.get("STORAGE_URL", "http://127.0.0.1:5002")
 
@@ -40,6 +42,7 @@ REQUEST_TIMEOUT = 5
 
 
 def register():
+    # Registration advertises ingestion while STORAGE_URL determines how to reach storage
     response = requests.post(
         f"{REGISTRY_URL}/register",
         json={
@@ -54,6 +57,7 @@ def register():
 
 @app.route("/ingest", methods=["POST"])
 def ingest():
+    # Reject malformed readings before sending anything to storage
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
@@ -77,12 +81,14 @@ def ingest():
     }
 
     try:
+        # Acknowledge the reading only after storage accepts it
         response = requests.post(
             f"{STORAGE_URL}/store",
             json=payload,
             timeout=REQUEST_TIMEOUT,
         )
     except requests.Timeout:
+        # A timeout does not prove that storage failed to save the reading
         return jsonify({"error": "Storage request timed out"}), 504
     except requests.RequestException:
         return jsonify({"error": "Could not contact storage"}), 502
@@ -94,7 +100,7 @@ def ingest():
 
 
 if __name__ == "__main__":
-    # Require a successful registration before starting the server
+    # Require successful registration before accepting readings
     try:
         register()
     except requests.RequestException as error:

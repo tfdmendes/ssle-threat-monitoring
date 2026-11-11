@@ -17,6 +17,7 @@ def load_targets(path):
     """
     Load a non-empty mapping of service names to HTTP URLs
     """
+    # 127.0.0.1 refers to the exporter's own machine or container
     targets = json.loads(Path(path).read_text())
     if not isinstance(targets, dict) or not targets:
         raise ValueError("Targets must be a non-empty JSON object")
@@ -39,12 +40,15 @@ def check_service_health(targets, health_metric, timeout):
     """
     for service, url in targets.items():
         try:
+            # Inspect the status without following redirects or downloading the body
             with requests.get(
                 url, timeout=timeout, allow_redirects=False, stream=True,
             ) as response:
+                # This checks the endpoint response, not the full data flow
                 healthy = int(200 <= response.status_code < 300)
         except requests.RequestException:
             healthy = 0
+        # Replace the last result for this service with a gauge that can rise or fall
         health_metric.labels(service=service).set(healthy)
 
 
@@ -53,12 +57,14 @@ def main():
     Run an exporter until interrupted, checking targets between sleep intervals
     """
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path(__file__).with_name("health_targets.example.json"))
+    # Find the default config beside this script, regardless of the working directory
+    parser.add_argument("--config", type=Path, default=Path(__file__).with_name("health_targets.json"))
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--interval", type=float, default=5)
     parser.add_argument("--timeout", type=float, default=2)
     args = parser.parse_args()
+    # Stop before starting the server if port or timing settings are invalid
     if not 1 <= args.port <= 65535:
         parser.error("Port must be between 1 and 65535")
     if not math.isfinite(args.interval) or args.interval <= 0:
@@ -70,6 +76,7 @@ def main():
     except (OSError, ValueError) as error:
         parser.error(str(error))
 
+    # This metric registry is separate from the registry.py service
     registry = CollectorRegistry()
     health_metric = Gauge(
         "service_health", "Latest HTTP health check result: 1 for success, 0 for failure",
@@ -77,17 +84,20 @@ def main():
     )
     server = None
     try:
-        # Probe before serving metrics so untested targets are not reported as down
+        # Probe first so untested targets are not reported as down
         check_service_health(targets, health_metric, args.timeout)
+        # Serve /metrics in a background thread while probing services
         server, thread = start_http_server(args.port, addr=args.host, registry=registry)
         print(f"Health exporter listening on {args.host}:{args.port}", flush=True)
         while True:
+            # Probe duration adds to the configured interval
             time.sleep(args.interval)
             check_service_health(targets, health_metric, args.timeout)
     except KeyboardInterrupt:
         pass
     finally:
         if server is not None:
+            # Close the listening socket and wait for the HTTP thread to finish
             server.shutdown()
             server.server_close()
             thread.join()

@@ -1,8 +1,7 @@
 """
-Keep the addresses of programs such as ingestion and storage
+Keep the latest advertised URL and registration time for each service name
 
-Other programs use this list to know where to send requests
-Keep a separate entry for each copy of the same program
+Registering the same name again replaces its previous entry
 """
 
 from datetime import datetime, timezone
@@ -11,11 +10,12 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 
-# Store registered services, indexed by name
+# Registrations are kept in memory and lost on restart
 registry = {}
 
 @app.route("/register", methods=["POST"])
 def register():
+    # Invalid JSON becomes None and is handled by the validation below
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):

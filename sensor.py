@@ -13,6 +13,7 @@ REQUEST_TIMEOUT = 5
 
 def send_temp():
     while True:
+        # Generate a simulated reading rather than reading a physical sensor
         temperature = round(random.uniform(20.0, 30.0), 2)
 
         payload = {
@@ -27,7 +28,7 @@ def send_temp():
                 timeout=REQUEST_TIMEOUT,
             )
 
-            # HTTP error responses do not raise exceptions automatically
+            # Convert HTTP 4xx and 5xx responses into the HTTPError handled below
             response.raise_for_status()
 
             print("Reading accepted:", payload)
@@ -41,6 +42,8 @@ def send_temp():
         except requests.RequestException as error:
             print("Could not complete the request:", error)
 
+        # The five-second pause starts after each request finishes
+        # Failed readings are discarded rather than retried
         time.sleep(SEND_INTERVAL)
 
 
