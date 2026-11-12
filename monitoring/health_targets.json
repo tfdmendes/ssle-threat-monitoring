@@ -1,6 +1,6 @@
 {
-  "registry": "http://127.0.0.1:5050/services",
-  "ingestion": "http://127.0.0.1:5001/metrics",
-  "storage": "http://127.0.0.1:5002/stats",
-  "analytics": "http://127.0.0.1:5003/average"
+  "registry": "http://ssle-registry:5050/services",
+  "ingestion": "http://ssle-ingestion:5001/metrics",
+  "storage": "http://ssle-storage:5002/stats",
+  "analytics": "http://ssle-analytics:5003/average"
 }

@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: ingestion
-          image: ssle-ingestion:dev
+          image: ssle-ingestion:monitoring-b5d2a91b32f8
           imagePullPolicy: Never
           ports:
             - name: http

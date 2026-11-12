@@ -6,3 +6,6 @@
 !instrumentation.py
 !analytics.py
 !sensor.py
+!monitoring/
+!monitoring/health_exporter.py
+!monitoring/health_targets.json
