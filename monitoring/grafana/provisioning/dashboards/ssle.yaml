@@ -1,0 +1,14 @@
+# Tells grafana where to look for the dashboards
+
+apiVersion: 1
+
+providers:
+  - name: SSLE
+    orgId: 1
+    folder: SSLE
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
