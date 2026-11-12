@@ -2,7 +2,7 @@
   "uid": "ssle-overview",
   "title": "SSLE Overview",
   "schemaVersion": 42,
-  "version": 3,
+  "version": 5,
   "timezone": "browser",
   "refresh": "15s",
   "timepicker": {
@@ -206,6 +206,138 @@
       },
       "options": {
         "legend": {"displayMode": "list", "placement": "bottom"}
+      }
+    },
+    {
+      "id": 7,
+      "title": "Firing availability alerts",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ssle-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ALERTS{alertname=~\"SSLE.*\",alertstate=\"firing\"}) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "links": [
+            {
+              "title": "View alert details in Prometheus",
+              "url": "http://10.255.255.42:9090/classic/alerts",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Pending availability alerts",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "ssle-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(ALERTS{alertname=~\"SSLE.*\",alertstate=\"pending\"}) or vector(0)",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          },
+          "links": [
+            {
+              "title": "View alert details in Prometheus",
+              "url": "http://10.255.255.42:9090/classic/alerts",
+              "targetBlank": true
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
       }
     }
   ]

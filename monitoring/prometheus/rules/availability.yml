@@ -1,0 +1,57 @@
+groups:
+  - name: ssle-availability
+    interval: 15s
+    rules:
+      - alert: SSLEServiceDown
+        expr: service_health{job="ssle-health"} == 0
+        for: 15s
+        labels:
+          severity: critical
+          component: application
+        annotations:
+          summary: "{{ $labels.service }} is not responding successfully"
+          description: "The HTTP health check for {{ $labels.service }} has failed for 15 seconds. Check the service and its dependencies."
+
+      - alert: SSLEMetricsUnavailable
+        expr: |
+          (up{job=~"ssle-ingestion|ssle-health"} == 0)
+          or absent(up{job="ssle-ingestion"})
+          or absent(up{job="ssle-health"})
+        for: 1m
+        labels:
+          severity: critical
+          component: monitoring
+        annotations:
+          summary: "Metrics are unavailable for {{ $labels.job }}"
+          description: "Prometheus has been unable to scrape {{ $labels.job }}, or its target has been missing, for one minute. Service health cannot be inferred from missing metrics."
+
+      - alert: SSLEHealthCheckMissing
+        expr: |
+          (
+            absent(service_health{job="ssle-health",service="registry"})
+            or absent(service_health{job="ssle-health",service="ingestion"})
+            or absent(service_health{job="ssle-health",service="storage"})
+            or absent(service_health{job="ssle-health",service="analytics"})
+          )
+          and on(job) (up{job="ssle-health"} == 1)
+        for: 1m
+        labels:
+          severity: warning
+          component: monitoring
+        annotations:
+          summary: "The health result for {{ $labels.service }} is missing"
+          description: "The exporter is reachable but has not exposed the expected {{ $labels.service }} health result for one minute. Check its target configuration."
+
+      - alert: SSLEReadingsStopped
+        expr: |
+          (
+            (sum(increase(ssle_ingestion_requests_total{job="ssle-ingestion",status="200"}[1m])) or vector(0)) == 0
+          )
+          and on() (up{job="ssle-ingestion"} == 1)
+        for: 2m
+        labels:
+          severity: warning
+          component: pipeline
+        annotations:
+          summary: "Successful temperature readings have stopped"
+          description: "Successful ingestion requests have shown no increase over a rolling one-minute window for two minutes. Check the sensor, ingestion and storage."
