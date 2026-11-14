@@ -168,7 +168,7 @@ Both ingestion entry points reach the same HTTP server, including `/ingest` and 
 
 ### Naming changes and the running deployment
 
-The resource, image, metric and dashboard names in this checkout are the target names for the next deployment. The running environment has not been renamed. The checks recorded below were performed before this naming change.
+The resource, image, metric and dashboard names in this checkout are the target names for the next deployment. The running environment has not been renamed.
 
 Deploy these changes together: rebuild and import the application images, update the Wazuh and monitoring configuration, and plan the database migration before switching to the new namespace. A new namespace and volume claim create new resources; they do not transfer readings from the existing volume. Keep the existing data until that migration is complete.
 
@@ -262,23 +262,3 @@ The two `.conf` files contain fragments for `ossec.conf`, not replacements for t
 The manager needs the standard `firewall-drop` command definition with `timeout_allowed=yes`, and the Agents need its executable. Restart the affected Wazuh services after installation to load the changes. To disable this response later, disable or remove its block and restart the manager.
 
 Kubernetes does not install or load these Wazuh settings. The repository files must be installed on the manager and Agents separately.
-
-### Verified deployment behaviour
-
-On 14 November 2026, a test through `10.255.255.11:30502/ingest` confirmed the following:
-
-- The application and Wazuh alerts both recorded the Kali client's IP, `10.255.255.1`.
-- The first nine invalid requests produced individual alerts; the tenth produced rule `100202`.
-- The Agent applied the block, and the five subsequent requests timed out.
-- The block was removed after about 60 seconds, and access recovered.
-- The legitimate sensor continued to receive HTTP 200 during the block.
-
-This validates the tested network path. If another route replaces the source IP before ingestion receives it, `srcip` will contain that replacement address. Check the observed IP before using it for blocking on a different network path.
-
-## Limits and pending work
-
-The application uses Flask development servers and has no authentication, TLS or endpoint authorisation. A numeric but forged temperature can pass its validation. Registry does not check whether registered services are still running.
-
-The deployed test entry point and metrics firewall restriction are not yet captured in the Kubernetes manifests. Image availability across Nodes and the ingestion build allowlist also need correction before the repository can reproduce the full deployment.
-
-The [backlog](BACKLOG.md) tracks the attack-defense tree still needed for the report.
