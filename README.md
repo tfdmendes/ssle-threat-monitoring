@@ -1,8 +1,8 @@
-# SSLE Threat Monitoring
+# Threat Monitoring
 
-This SSLE lab combines a temperature-reading application with availability monitoring and security detection. It uses Prometheus and Grafana to show service health, and Wazuh to detect repeated invalid requests and temporarily block their source IP.
+This project combines a temperature-reading application with availability monitoring and security detection. It uses Prometheus and Grafana to show service health, and Wazuh to detect repeated invalid requests and temporarily block their source IP.
 
-The repository contains the application, Dockerfiles, Kubernetes manifests and monitoring configuration. The K3s cluster, Incus containers and monitoring servers are set up separately. Saving a configuration here does not apply it to a running lab.
+The repository contains the application, Dockerfiles, Kubernetes manifests and monitoring configuration. The K3s cluster, Incus containers and monitoring servers are set up separately. Saving a configuration here does not apply it to a running deployment.
 
 ## How a reading moves through the application
 
@@ -116,17 +116,17 @@ The default URLs work when all processes run on the same machine. These environm
 
 ## Run in Kubernetes
 
-K3s provides the Kubernetes cluster. A **Node** is a machine that runs application containers. Each component runs in a **Pod**, managed by a **Deployment** that keeps one instance running. A **Service** gives a Pod a stable network address when the Pod is replaced. The `ssle` namespace groups these resources; it is not a separate machine.
+K3s provides the Kubernetes cluster. A **Node** is a machine that runs application containers. Each component runs in a **Pod**, managed by a **Deployment** that keeps one instance running. A **Service** gives a Pod a stable network address when the Pod is replaced. The `threat-monitoring` namespace groups these resources; it is not a separate machine.
 
 ```mermaid
 flowchart TB
-    subgraph Cluster["K3s: namespace ssle"]
-        Sensor["Sensor Pod"] --> IngestionService["Service: ssle-ingestion"]
+    subgraph Cluster["K3s: namespace threat-monitoring"]
+        Sensor["Sensor Pod"] --> IngestionService["Service: ingestion"]
         IngestionService --> Ingestion["Ingestion Pod"]
-        Ingestion --> StorageService["Service: ssle-storage"]
+        Ingestion --> StorageService["Service: storage"]
         Analytics["Analytics Pod"] --> StorageService
         StorageService --> Storage["Storage Pod"]
-        Ingestion -.-> RegistryService["Service: ssle-registry"]
+        Ingestion -.-> RegistryService["Service: registry"]
         RegistryService --> Registry["Registry Pod"]
         Storage --> Volume[("Persistent storage on one Node")]
         Metrics["NodePort 30501"] --> Ingestion
@@ -138,33 +138,39 @@ flowchart TB
 
 The [Kubernetes manifests](deploy/k8s) define the application. The [Dockerfiles](deploy/docker) define its images. Before applying the manifests:
 
-- Prepare the `ssle` namespace and the `local-path` storage provider.
+- Prepare the `threat-monitoring` namespace and the `local-path` storage provider.
 - Build the images with the names and tags specified in the manifests. Import each image into every Node where its Pod can run. The `Never` image policy means Kubernetes will not download a missing image.
-- Start registry and storage before ingestion, then start the remaining components and monitoring endpoints. Apply the registry resources in `ssle` too; their file does not specify a namespace.
+- Start registry and storage before ingestion, then start the remaining components and monitoring endpoints. All manifests use the `threat-monitoring` namespace.
 
 **The ingestion build currently needs a correction:** [.dockerignore](.dockerignore) excludes `security_logging.py`, although the Dockerfile copies it. Add that file to the allowlist before building ingestion from this checkout.
 
-The manifests do not assign the Pods to particular Nodes. If a Pod reports `ErrImageNeverPull`, check that its image exists on the selected Node. In the lab inspected on 14 November 2026, only ingestion's image was present on both Nodes; some other components could not start if placed on the other Node.
+The manifests do not assign the Pods to particular Nodes. If a Pod reports `ErrImageNeverPull`, check that its image exists on the selected Node. In the deployment inspected on 14 November 2026, only ingestion's image was present on both Nodes; some other components could not start if placed on the other Node.
 
-Storage mounts a persistent volume at `/data`, where it keeps `readings.db`. The volume claim, `ssle-storage-data`, requests 1 GiB through `local-path`. The data stays on the Node associated with that volume. Replacing the storage Pod does not erase the database, but deleting the volume can lose the readings. There is no database replication or backup.
+Storage mounts a persistent volume at `/data`, where it keeps `readings.db`. The volume claim, `storage-data`, requests 1 GiB through `local-path`. The data stays on the Node associated with that volume. Replacing the storage Pod does not erase the database, but deleting the volume can lose the readings. There is no database replication or backup.
 
 Sensor and storage stop their old Pod before starting a replacement during an update. The other Deployments use rolling updates. Each component still has only one instance, so replacement does not guarantee uninterrupted service. Readiness checks control when a Pod can receive traffic: ingestion and analytics check an open port; storage and the health exporter check an HTTP endpoint. Registry has no readiness check. Only the health exporter has a liveness check to trigger a restart after repeated failures.
 
 Prometheus, Grafana and the Wazuh manager run outside these Deployments. Wazuh Agents must be installed separately on the Nodes where ingestion can run; the repository does not deploy them through Kubernetes.
 
-### External access in the lab
+### External access in the deployment
 
-A NodePort makes a Service reachable through a Node's IP and an external port. The monitoring manifests expose ports `30501` and `30800`. The lab also has a separate ingestion entry point for external tests:
+A NodePort makes a Service reachable through a Node's IP and an external port. The monitoring manifests expose ports `30501` and `30800`. The deployed environment also has a separate ingestion entry point for external tests:
 
 | Entry point | Use | Saved in this repository? |
 | --- | --- | --- |
 | `10.255.255.10:30501` | Ingestion metrics for Prometheus | Service in [monitoring.yaml](deploy/k8s/monitoring.yaml); the firewall restriction to Prometheus is configured separately |
 | `10.255.255.10:30800` | Health exporter metrics | Service in [monitoring.yaml](deploy/k8s/monitoring.yaml) |
-| `10.255.255.11:30502` | External ingestion tests | Lab-only change to `ssle-ingestion`; absent from [ingestion.yaml](deploy/k8s/ingestion.yaml) |
+| `10.255.255.11:30502` | External ingestion tests | Deployment-only ingestion entry point; absent from [ingestion.yaml](deploy/k8s/ingestion.yaml) |
 
-The test entry point uses `externalTrafficPolicy: Local`: it forwards only to a Pod on the contacted Node and preserves the client IP during that forwarding. In the verified lab, ingestion ran on `k3s-node1` at `10.255.255.11`. These addresses and placements describe the lab inspected on 14 November 2026.
+The test entry point uses `externalTrafficPolicy: Local`: it forwards only to a Pod on the contacted Node and preserves the client IP during that forwarding. In the verified deployment, ingestion ran on `k3s-node1` at `10.255.255.11`. These addresses and placements describe the deployment inspected on 14 November 2026.
 
 Both ingestion entry points reach the same HTTP server, including `/ingest` and `/metrics`. Restricting port `30501` to Prometheus does not restrict access to `/metrics` through port `30502`.
+
+### Naming changes and the running deployment
+
+The resource, image, metric and dashboard names in this checkout are the target names for the next deployment. The running environment has not been renamed. The checks recorded below were performed before this naming change.
+
+Deploy these changes together: rebuild and import the application images, update the Wazuh and monitoring configuration, and plan the database migration before switching to the new namespace. A new namespace and volume claim create new resources; they do not transfer readings from the existing volume. Keep the existing data until that migration is complete.
 
 ## Availability monitoring
 
@@ -188,8 +194,8 @@ Ingestion's [instrumentation](instrumentation.py) publishes:
 
 | Metric | Meaning |
 | --- | --- |
-| `ssle_ingestion_requests_total` | Number of ingestion responses, separated by HTTP status |
-| `ssle_ingestion_request_duration_seconds` | Request duration, including the wait for storage |
+| `ingestion_requests_total` | Number of ingestion responses, separated by HTTP status |
+| `ingestion_request_duration_seconds` | Request duration, including the wait for storage |
 
 These measurements reset when ingestion restarts. Requests to `/metrics` do not count as ingestion requests.
 
@@ -197,14 +203,14 @@ The [availability rules](monitoring/prometheus/rules/availability.yml) distingui
 
 | Alert | Condition |
 | --- | --- |
-| `SSLEServiceDown` | A service health result stays at 0 for 15 seconds |
-| `SSLEMetricsUnavailable` | Prometheus cannot collect ingestion or health exporter metrics, or either target is missing, for one minute |
-| `SSLEHealthCheckMissing` | The exporter responds but an expected service health result is missing for one minute |
-| `SSLEReadingsStopped` | Successful ingestion requests show no increase over a rolling one-minute window, and that condition persists for two minutes while ingestion metrics remain reachable |
+| `ServiceDown` | A service health result stays at 0 for 15 seconds |
+| `MetricsUnavailable` | Prometheus cannot collect ingestion or health exporter metrics, or either target is missing, for one minute |
+| `HealthCheckMissing` | The exporter responds but an expected service health result is missing for one minute |
+| `ReadingsStopped` | Successful ingestion requests show no increase over a rolling one-minute window, and that condition persists for two minutes while ingestion metrics remain reachable |
 
 Collection and rule-evaluation intervals affect when an alert appears. No external alert destination is configured, so these rules do not send email or other notifications.
 
-The [Grafana dashboard](monitoring/grafana/dashboards/ssle-overview.json) shows service health, request rates, request durations, server-error rates and alert history. Its [data source](monitoring/grafana/provisioning/datasources/prometheus.yaml) points to Prometheus at `http://10.255.255.42:9090`. The [dashboard provider](monitoring/grafana/provisioning/dashboards/ssle.yaml) loads the dashboard from a file; edits cannot be saved through the Grafana UI. Install these files on the Grafana server separately and adapt the addresses to the lab. The [Grafana service settings](monitoring/grafana/ssle.conf) select the starting dashboard.
+The [Grafana dashboard](monitoring/grafana/dashboards/overview.json) shows service health, request rates, request durations, server-error rates and alert history. Its [data source](monitoring/grafana/provisioning/datasources/prometheus.yaml) points to Prometheus at `http://10.255.255.42:9090`. The [dashboard provider](monitoring/grafana/provisioning/dashboards/dashboards.yaml) loads the dashboard from a file; edits cannot be saved through the Grafana UI. Install these files on the Grafana server separately and adapt the addresses to the deployment. The [Grafana service settings](monitoring/grafana/grafana.conf) select the starting dashboard.
 
 ## Security detection and IP blocking
 
@@ -245,11 +251,11 @@ The **Active Response** configuration links rule `100202` to `firewall-drop`. Wh
 | File | Where it is used |
 | --- | --- |
 | [ingestion-agent.conf](deploy/wazuh/ingestion-agent.conf) | Add its log-collection block to the Agent's `/var/ossec/etc/ossec.conf` on each eligible Node |
-| [ingestion-decoder.xml](deploy/wazuh/ingestion-decoder.xml) | Install as `/var/ossec/etc/decoders/ssle_ingestion.xml` on the manager |
-| [ingestion-rules.xml](deploy/wazuh/ingestion-rules.xml) | Install as `/var/ossec/etc/rules/ssle_ingestion.xml` on the manager |
+| [ingestion-decoder.xml](deploy/wazuh/ingestion-decoder.xml) | Install as `/var/ossec/etc/decoders/ingestion.xml` on the manager |
+| [ingestion-rules.xml](deploy/wazuh/ingestion-rules.xml) | Install as `/var/ossec/etc/rules/ingestion.xml` on the manager |
 | [ingestion-active-response.conf](deploy/wazuh/ingestion-active-response.conf) | Add its `active-response` block to the manager's `/var/ossec/etc/ossec.conf` |
 
-The Agent configuration reads `/var/log/containers/ssle-ingestion-*_ssle_ingestion-*.log`. The decoder skips the container log header before reading the JSON event.
+The Agent configuration reads `/var/log/containers/ingestion-*_threat-monitoring_ingestion-*.log`. The decoder skips the container log header before reading the JSON event.
 
 The two `.conf` files contain fragments for `ossec.conf`, not replacements for the full file. Add their child blocks inside an existing `ossec_config` section without nesting another section or duplicating an existing response for `100202`. Install the decoder and rules as separate files in the directories shown above.
 
@@ -257,7 +263,7 @@ The manager needs the standard `firewall-drop` command definition with `timeout_
 
 Kubernetes does not install or load these Wazuh settings. The repository files must be installed on the manager and Agents separately.
 
-### Verified lab behaviour
+### Verified deployment behaviour
 
 On 14 November 2026, a test through `10.255.255.11:30502/ingest` confirmed the following:
 
@@ -267,12 +273,12 @@ On 14 November 2026, a test through `10.255.255.11:30502/ingest` confirmed the f
 - The block was removed after about 60 seconds, and access recovered.
 - The legitimate sensor continued to receive HTTP 200 during the block.
 
-This validates that lab route. If another route replaces the source IP before ingestion receives it, `srcip` will contain that replacement address. Check the observed IP before using it for blocking on a different network path.
+This validates the tested network path. If another route replaces the source IP before ingestion receives it, `srcip` will contain that replacement address. Check the observed IP before using it for blocking on a different network path.
 
 ## Limits and pending work
 
 The application uses Flask development servers and has no authentication, TLS or endpoint authorisation. A numeric but forged temperature can pass its validation. Registry does not check whether registered services are still running.
 
-The lab's test entry point and metrics firewall restriction are not yet captured in the Kubernetes manifests. Image availability across Nodes and the ingestion build allowlist also need correction before the repository can reproduce the full lab setup.
+The deployed test entry point and metrics firewall restriction are not yet captured in the Kubernetes manifests. Image availability across Nodes and the ingestion build allowlist also need correction before the repository can reproduce the full deployment.
 
 The [backlog](BACKLOG.md) tracks the attack-defense tree still needed for the report.

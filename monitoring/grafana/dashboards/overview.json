@@ -1,6 +1,6 @@
 {
-  "uid": "ssle-overview",
-  "title": "SSLE Overview",
+  "uid": "overview",
+  "title": "Threat Monitoring Overview",
   "schemaVersion": 42,
   "version": 5,
   "timezone": "browser",
@@ -18,11 +18,11 @@
       "title": "Service health",
       "type": "stat",
       "gridPos": {"x": 0, "y": 0, "w": 16, "h": 5},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "service_health{job=\"ssle-health\"}",
+          "expr": "service_health{job=\"health\"}",
           "instant": true,
           "range": false,
           "legendFormat": "{{service}}"
@@ -67,11 +67,11 @@
       "title": "Prometheus collection",
       "type": "stat",
       "gridPos": {"x": 16, "y": 0, "w": 8, "h": 5},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "up{job=~\"ssle-ingestion|ssle-health\"}",
+          "expr": "up{job=~\"ingestion|health\"}",
           "instant": true,
           "range": false,
           "legendFormat": "{{job}}"
@@ -116,11 +116,11 @@
       "title": "Ingestion requests per second",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 5, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (status) (rate(ssle_ingestion_requests_total{job=\"ssle-ingestion\"}[5m]))",
+          "expr": "sum by (status) (rate(ingestion_requests_total{job=\"ingestion\"}[5m]))",
           "legendFormat": "HTTP {{status}}"
         }
       ],
@@ -137,16 +137,16 @@
       "title": "Ingestion response time",
       "type": "timeseries",
       "gridPos": {"x": 12, "y": 5, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(ssle_ingestion_request_duration_seconds_sum{job=\"ssle-ingestion\"}[5m])) / sum(rate(ssle_ingestion_request_duration_seconds_count{job=\"ssle-ingestion\"}[5m]))",
+          "expr": "sum(rate(ingestion_request_duration_seconds_sum{job=\"ingestion\"}[5m])) / sum(rate(ingestion_request_duration_seconds_count{job=\"ingestion\"}[5m]))",
           "legendFormat": "Average"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(ssle_ingestion_request_duration_seconds_bucket{job=\"ssle-ingestion\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ingestion_request_duration_seconds_bucket{job=\"ingestion\"}[5m])))",
           "legendFormat": "95th percentile"
         }
       ],
@@ -163,11 +163,11 @@
       "title": "Ingestion server error ratio",
       "type": "timeseries",
       "gridPos": {"x": 0, "y": 13, "w": 8, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "(sum(rate(ssle_ingestion_requests_total{job=\"ssle-ingestion\",status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(ssle_ingestion_requests_total{job=\"ssle-ingestion\"}[5m])), 1e-9)",
+          "expr": "(sum(rate(ingestion_requests_total{job=\"ingestion\",status=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(ingestion_requests_total{job=\"ingestion\"}[5m])), 1e-9)",
           "legendFormat": "HTTP 5xx"
         }
       ],
@@ -184,11 +184,11 @@
       "title": "Service health history",
       "type": "timeseries",
       "gridPos": {"x": 8, "y": 13, "w": 16, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "ssle-prometheus"},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [
         {
           "refId": "A",
-          "expr": "service_health{job=\"ssle-health\"}",
+          "expr": "service_health{job=\"health\"}",
           "legendFormat": "{{service}}"
         }
       ],
@@ -220,12 +220,12 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "ssle-prometheus"
+        "uid": "prometheus"
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(ALERTS{alertname=~\"SSLE.*\",alertstate=\"firing\"}) or vector(0)",
+          "expr": "sum(ALERTS{alertname=~\"ServiceDown|MetricsUnavailable|HealthCheckMissing|ReadingsStopped\",alertstate=\"firing\"}) or vector(0)",
           "instant": true,
           "range": false
         }
@@ -286,12 +286,12 @@
       },
       "datasource": {
         "type": "prometheus",
-        "uid": "ssle-prometheus"
+        "uid": "prometheus"
       },
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(ALERTS{alertname=~\"SSLE.*\",alertstate=\"pending\"}) or vector(0)",
+          "expr": "sum(ALERTS{alertname=~\"ServiceDown|MetricsUnavailable|HealthCheckMissing|ReadingsStopped\",alertstate=\"pending\"}) or vector(0)",
           "instant": true,
           "range": false
         }

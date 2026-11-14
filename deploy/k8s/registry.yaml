@@ -1,20 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ssle-registry
+  name: registry
+  namespace: threat-monitoring
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ssle-registry
+      app: registry
   template:
     metadata:
       labels:
-        app: ssle-registry
+        app: registry
     spec:
       containers:
         - name: registry
-          image: ssle-registry:dev
+          image: registry:dev
           imagePullPolicy: Never
           ports:
             - containerPort: 5050
@@ -22,10 +23,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ssle-registry
+  name: registry
+  namespace: threat-monitoring
 spec:
   selector:
-    app: ssle-registry
+    app: registry
   ports:
     - port: 5050
       targetPort: 5050

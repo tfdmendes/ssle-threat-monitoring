@@ -3,9 +3,9 @@
 apiVersion: 1
 
 providers:
-  - name: SSLE
+  - name: Threat Monitoring
     orgId: 1
-    folder: SSLE
+    folder: Threat Monitoring
     type: file
     disableDeletion: false
     allowUiUpdates: false

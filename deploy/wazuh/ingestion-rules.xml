@@ -1,9 +1,9 @@
-<group name="ssle,ingestion,">
+<group name="threat-monitoring,ingestion,">
   <!-- Classify this decoder's ingestion events before checking for rejections -->
   <rule id="100200" level="0">
-    <decoded_as>ssle-ingestion-cri</decoded_as>
+    <decoded_as>ingestion-cri</decoded_as>
     <field name="service" type="pcre2">^ingestion-service$</field>
-    <description>SSLE ingestion security event</description>
+    <description>Ingestion security event</description>
   </rule>
 
   <rule id="100201" level="3">
@@ -13,17 +13,17 @@
     <field name="method" type="pcre2">^POST$</field>
     <field name="endpoint" type="pcre2">^/ingest$</field>
     <status>^400$</status>
-    <description>SSLE ingestion rejected a reading from $(srcip): $(reason)</description>
+    <description>Ingestion rejected a reading from $(srcip): $(reason)</description>
     <group>invalid_reading,</group>
   </rule>
 
-  <!-- Ten rejections in thirty seconds is our initial lab threshold -->
+  <!-- Ten rejections in thirty seconds is our initial threshold -->
   <rule id="100202" level="10" frequency="10" timeframe="30">
     <!-- Correlate rejection events over time instead of checking one event -->
     <if_matched_sid>100201</if_matched_sid>
     <!-- Count only events from the same source IP within this agent -->
     <same_srcip />
-    <description>SSLE ingestion rejected repeated readings from $(srcip) within 30 seconds</description>
+    <description>Ingestion rejected repeated readings from $(srcip) within 30 seconds</description>
     <group>suspicious_activity,</group>
   </rule>
 </group>

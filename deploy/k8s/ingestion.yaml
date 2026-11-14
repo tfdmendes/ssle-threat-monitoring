@@ -1,32 +1,32 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ssle-ingestion
-  namespace: ssle
+  name: ingestion
+  namespace: threat-monitoring
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ssle-ingestion
+      app: ingestion
   template:
     metadata:
       labels:
-        app: ssle-ingestion
+        app: ingestion
     spec:
       containers:
         - name: ingestion
-          image: ssle-ingestion:wazuh-f2a0194b4dd5
+          image: ingestion:wazuh-f2a0194b4dd5
           imagePullPolicy: Never
           ports:
             - name: http
               containerPort: 5001
           env:
             - name: SERVICE_URL
-              value: http://ssle-ingestion:5001
+              value: http://ingestion:5001
             - name: REGISTRY_URL
-              value: http://ssle-registry:5050
+              value: http://registry:5050
             - name: STORAGE_URL
-              value: http://ssle-storage:5002
+              value: http://storage:5002
           readinessProbe:
             tcpSocket:
               port: http
@@ -36,11 +36,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: ssle-ingestion
-  namespace: ssle
+  name: ingestion
+  namespace: threat-monitoring
 spec:
   selector:
-    app: ssle-ingestion
+    app: ingestion
   ports:
     - name: http
       port: 5001

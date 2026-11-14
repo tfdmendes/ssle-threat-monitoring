@@ -1,6 +1,6 @@
-<decoder name="ssle-ingestion-cri">
+<decoder name="ingestion-cri">
   <!-- Match the agent prefix and a complete CRI stdout record followed by JSON -->
-  <prematch type="pcre2">^ssle-ingestion: \S+ stdout F (?=\{)</prematch>
+  <prematch type="pcre2">^ingestion: \S+ stdout F (?=\{)</prematch>
   <!-- Skip the matched header before extracting fields from the JSON body -->
   <plugin_decoder offset="after_prematch">JSON_Decoder</plugin_decoder>
 </decoder>

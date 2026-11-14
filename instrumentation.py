@@ -7,19 +7,19 @@ from time import perf_counter
 from flask import Response, g, request
 from prometheus_client import Counter, Histogram, generate_latest
 
-# Keep the text format compatible with the lab's Prometheus 2.x server
+# Keep the text format compatible with the deployed Prometheus 2.x server
 _PROMETHEUS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
 # Measurements reset when the ingestion process restarts
 # The status label separates successful responses from different HTTP errors
 _INGEST_REQUESTS = Counter(
-    "ssle_ingestion_requests_total",
+    "ingestion_requests_total",
     "Responses to POST /ingest by HTTP status",
     ["status"],
 )
 # A histogram records duration buckets, a count and total elapsed time
 _INGEST_DURATION = Histogram(
-    "ssle_ingestion_request_duration_seconds",
+    "ingestion_request_duration_seconds",
     "Time spent processing POST /ingest in seconds",
 )
 
