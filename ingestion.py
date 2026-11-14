@@ -26,6 +26,7 @@ import requests
 from flask import Flask, jsonify, request
 
 from instrumentation import configure_metrics
+from security_logging import log_ingestion_rejection
 
 app = Flask(__name__)
 # Attach /metrics and request hooks to this same Flask app
@@ -39,6 +40,11 @@ REGISTRY_URL = os.environ.get("REGISTRY_URL", "http://127.0.0.1:5050")
 STORAGE_URL = os.environ.get("STORAGE_URL", "http://127.0.0.1:5002")
 
 REQUEST_TIMEOUT = 5
+
+
+def reject_reading(reason, message):
+    log_ingestion_rejection(request, reason)
+    return jsonify({"error": message}), 400
 
 
 def register():
@@ -61,19 +67,19 @@ def ingest():
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
-        return jsonify({"error": "Expected a JSON object"}), 400
+        return reject_reading("invalid_json_object", "Expected a JSON object")
 
     device_id = data.get("device_id")
     temperature = data.get("temperature")
 
     if not isinstance(device_id, str) or not device_id.strip():
-        return jsonify({"error": "Missing or invalid device_id"}), 400
+        return reject_reading("invalid_device_id", "Missing or invalid device_id")
 
     # Python treats booleans as integers, so reject them explicitly
     if isinstance(temperature, bool) or not isinstance(
         temperature, (int, float)
     ):
-        return jsonify({"error": "Missing or invalid temperature"}), 400
+        return reject_reading("invalid_temperature", "Missing or invalid temperature")
 
     payload = {
         "device_id": device_id,
