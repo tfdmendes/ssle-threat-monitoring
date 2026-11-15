@@ -1,0 +1,609 @@
+{
+  "uid": "pod-container-cpu",
+  "title": "Pod and Container Resources",
+  "description": "CPU usage, effective CFS quotas and RAM working sets from kubelet/cAdvisor. Select Pod or Container scope. No workload resource limits are changed by this monitoring.",
+  "schemaVersion": 42,
+  "version": 3,
+  "timezone": "browser",
+  "refresh": "15s",
+  "timepicker": {
+    "refresh_intervals": [
+      "15s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "1h"
+    ]
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "SSLE",
+    "infrastructure"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "node",
+        "label": "Node",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(up{job=\"kubelet-cadvisor\"}, node)",
+        "definition": "label_values(up{job=\"kubelet-cadvisor\"}, node)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "namespace",
+        "label": "Namespace",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\"}, namespace)",
+        "definition": "label_values(container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\"}, namespace)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "ssle",
+          "value": "ssle"
+        },
+        "options": []
+      },
+      {
+        "name": "pod",
+        "label": "Pod",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
+        },
+        "query": "label_values(container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\"}, pod)",
+        "definition": "label_values(container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\"}, pod)",
+        "refresh": 1,
+        "sort": 1,
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".*",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "scope",
+        "label": "Scope",
+        "type": "custom",
+        "query": "Pod : pod,Container : container",
+        "multi": false,
+        "includeAll": false,
+        "current": {
+          "selected": true,
+          "text": "Container",
+          "value": "container"
+        },
+        "options": [
+          {
+            "selected": false,
+            "text": "Pod",
+            "value": "pod"
+          },
+          {
+            "selected": true,
+            "text": "Container",
+            "value": "container"
+          }
+        ]
+      }
+    ]
+  },
+  "links": [
+    {
+      "title": "Node Resources",
+      "type": "link",
+      "url": "/d/node-resources",
+      "keepTime": true
+    },
+    {
+      "title": "Pod and Container Resources",
+      "type": "link",
+      "url": "/d/pod-container-cpu",
+      "keepTime": true
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Kubelet collection",
+      "description": "",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "up{job=\"kubelet-cadvisor\",node=~\"$node\"}",
+          "legendFormat": "{{node}}",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data",
+          "decimals": 0,
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "UP",
+                  "color": "green"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "CPU quota (cores)",
+      "description": "The effective CFS quota divided by its period, read from cAdvisor. Scope selects the Pod cgroup or its application containers. No CPU limit means the period is present but no CFS quota is exported. Missing telemetry remains No data. CPU requests are not CPU limits.",
+      "type": "stat",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 18,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace(((max by (node, namespace, pod, container, scope) (container_spec_cpu_quota{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}) / max by (node, namespace, pod, container, scope) (container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"})) or on (node, namespace, pod, container, scope) (0 * max by (node, namespace, pod, container, scope) (container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}) - 1)), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": true,
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "noValue": "No data",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "-1": {
+                  "text": "No CPU limit",
+                  "color": "text"
+                }
+              }
+            }
+          ],
+          "decimals": 2
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "text": {
+          "titleSize": 12,
+          "valueSize": 22
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "CPU usage (cores)",
+      "description": "CPU consumed by the selected cgroup scope. Pod scope reads the Pod cgroup directly. Container scope excludes sandbox containers. The two scopes are never added together.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace((sum by (node, namespace, pod, container, scope) (rate(container_cpu_usage_seconds_total{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}[$__rate_interval]))), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "CPU usage / quota",
+      "description": "CPU usage relative to an effective local CFS quota. Cgroups without a quota have no series here. This is not usage relative to Node capacity.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace(((sum by (node, namespace, pod, container, scope) (rate(container_cpu_usage_seconds_total{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}[$__rate_interval]))) / (max by (node, namespace, pod, container, scope) (container_spec_cpu_quota{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}) / max by (node, namespace, pod, container, scope) (container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}))), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "noValue": "No data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Throttled periods",
+      "description": "Fraction of quota-enforcement periods that included throttling. This is not the fraction of CPU time lost. No quota data is shown when CFS quota counters are absent.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace((sum by (node, namespace, pod, container, scope) (rate(container_cpu_cfs_throttled_periods_total{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}[$__rate_interval])) / clamp_min(sum by (node, namespace, pod, container, scope) (rate(container_cpu_cfs_periods_total{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}[$__rate_interval])), 1e-9)), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "noValue": "No data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          },
+          "max": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Throttled time (seconds/second)",
+      "description": "Rate of accumulated cgroup throttled time. Interpret this with throttled periods, CPU usage and application latency. Do not add Pod and container values because they are different levels of the same hierarchy.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace((sum by (node, namespace, pod, container, scope) (rate(container_cpu_cfs_throttled_seconds_total{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"}[$__rate_interval]))), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "RAM working set",
+      "description": "Estimated memory in use, including some cached memory. This is not a configured request or limit. Pod scope reads the Pod cgroup, including its overhead. Container scope shows each application container. The two scopes are not added together.",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 22,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "label_replace(label_replace((max by (node, namespace, pod, container, scope) (container_memory_working_set_bytes{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"})), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "legendFormat": "{{service}} · {{node}}",
+          "instant": false,
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "min": 0,
+          "noValue": "No data",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ],
+          "width": 420
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Pod details",
+      "description": "Full Pod identities for the selected Node, namespace, Pod and scope. Short legends do not merge replicas or containers; use this table to distinguish instances with the same service and Node.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 31,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "label_replace(label_replace((group by (node, namespace, pod, container, scope) (container_spec_cpu_period{job=\"kubelet-cadvisor\",node=~\"$node\",namespace=~\"$namespace\",pod=~\"$pod\",scope=\"$scope\"})), \"service\", \"$1\", \"pod\", \"(.+)\"), \"service\", \"$2\", \"pod\", \"(ssle-)?(.+)-[a-z0-9]{8,10}-[a-z0-9]{5}\")",
+          "format": "table",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "scope": true
+            },
+            "indexByName": {
+              "service": 0,
+              "node": 1,
+              "pod": 2,
+              "container": 3,
+              "namespace": 4
+            },
+            "renameByName": {
+              "service": "Service",
+              "node": "Node",
+              "pod": "Pod",
+              "container": "Container",
+              "namespace": "Namespace"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "inspect": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pod"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 440
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "sortBy": [
+          {
+            "displayName": "Service",
+            "desc": false
+          }
+        ]
+      }
+    }
+  ]
+}

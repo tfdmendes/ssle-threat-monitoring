@@ -188,7 +188,7 @@ flowchart LR
 
 The [target list](monitoring/health_targets.json) uses Kubernetes Service names. To run the exporter elsewhere, provide a target file with URLs reachable from that machine. A successful health check proves that the selected endpoint responded, not that the full reading flow works.
 
-[Prometheus configuration](monitoring/prometheus/prometheus.yml) collects application metrics every 15 seconds. It also monitors itself and a Node Exporter at `localhost:9100`. That Node Exporter describes the machine or container running Prometheus, not both K3s Nodes. The repository does not install it.
+[Prometheus configuration](monitoring/prometheus/prometheus.yml) collects application and resource metrics every 15 seconds. It also monitors itself and a Node Exporter at `localhost:9100`. That Node Exporter describes the container running Prometheus; its root filesystem is shared with the K3s Nodes in this lab. The `incus-nodes` and `kubelet-cadvisor` jobs provide the separate Node and Pod/container measurements described below.
 
 Ingestion's [instrumentation](instrumentation.py) publishes:
 
@@ -211,6 +211,51 @@ The [availability rules](monitoring/prometheus/rules/availability.yml) distingui
 Collection and rule-evaluation intervals affect when an alert appears. No external alert destination is configured, so these rules do not send email or other notifications.
 
 The [Grafana dashboard](monitoring/grafana/dashboards/overview.json) shows service health, request rates, request durations, server-error rates and alert history. Its [data source](monitoring/grafana/provisioning/datasources/prometheus.yaml) points to Prometheus at `http://10.255.255.42:9090`. The [dashboard provider](monitoring/grafana/provisioning/dashboards/dashboards.yaml) loads the dashboard from a file; edits cannot be saved through the Grafana UI. Install these files on the Grafana server separately and adapt the addresses to the deployment. The [Grafana service settings](monitoring/grafana/grafana.conf) select the starting dashboard.
+
+### Node and Pod resource monitoring
+
+The resource dashboards use two sources. Incus attributes CPU, memory, disk I/O and network traffic to each K3s Node instance. The kubelet's `/metrics/cadvisor` endpoint exposes CPU usage, effective CFS quotas and memory working sets for Pod and container cgroups. These jobs do not change workload requests or limits.
+
+| Dashboard | Measurements and filters |
+| --- | --- |
+| [Node Resources](monitoring/grafana/dashboards/nodes.json) | CPU in cores, estimated RAM usage, disk read/write rates and external network traffic, filtered by Node; shared CPU/RAM capacity and root filesystem space |
+| [Pod and Container Resources](monitoring/grafana/dashboards/pods.json) | CPU in cores, quota, usage relative to quota, throttled periods, throttled time and RAM working set; filter by Node, namespace, Pod and scope |
+
+The `Scope` selector chooses either the Pod cgroup or the application container cgroups. The scrape configuration adds a `scope` label and excludes sandbox containers. Pod and container measurements are not added together because they represent different levels of the same hierarchy.
+
+Resource legends show `service · Node`. Dashboard queries derive the short service name from Deployment-style Pod names, omitting the optional `ssle-` prefix and generated suffixes. Other Pod names remain unchanged. The full Pod name remains in the `Pod` selector, the query result labels and the `Pod details` table, together with its Node, container and namespace. Short legends do not aggregate replicas or change stored metrics.
+
+CPU quota is the cgroup quota divided by its enforcement period, expressed in cores. The dashboard displays `No CPU limit` when cAdvisor reports a period without a quota. A missing scrape remains `No data`. Quota utilisation and throttling panels only show cgroups that expose quota metrics. The throttled-period fraction is not the fraction of CPU time lost.
+
+The RAM panel reads `container_memory_working_set_bytes` as a gauge and displays it in binary memory units. It estimates memory in use and can include cached memory; it is not a configured request or limit. This is the working-set measure also used by the [Kubernetes Metrics API](https://kubernetes.io/docs/tasks/debug/debug-cluster/resource-metrics-pipeline/#memory). Pod scope reads the Pod cgroup, including its overhead, while container scope shows each application container. Values can differ slightly from `kubectl top` because the collection times and cgroup scopes differ. The panel follows the same filters as CPU and does not add the two scopes together.
+
+RAM usage is estimated as the total minus the available memory reported by Incus. Disk I/O is attributed to each instance and does not include reads served from cache. Network panels select `eth0`; summing loopback, bridges and Pod interfaces would count some traffic more than once.
+
+Both Nodes run inside the same Kali VM. On 15 November 2026, each Node advertised access to the same two CPUs and approximately 7.64 GiB of RAM, without separate Incus CPU or memory limits. Do not add their advertised capacities to calculate physical capacity. Both Nodes also use the same backing filesystem. Root filesystem space is therefore shown once, through the existing Node Exporter, and does not change with the Node filter.
+
+The deployment checked on that date had no CPU or memory requests or limits for ingestion, storage, analytics, registry or sensor. The health exporter had a CPU request of `10m`, a CPU limit of `100m`, a memory request of `32Mi` and a memory limit of `128Mi`. The monitoring setup preserved these values and did not restart the application Pods.
+
+#### Access and installation
+
+The `incus-nodes` job connects to `https://10.255.255.1:8444/1.0/metrics`, using the metrics-only Incus listener on the private bridge. It keeps metrics for `k3s-master` and `k3s-node1` and copies the instance name into the `node` label. Configure a client certificate of type `metrics`, following the [Incus metrics setup](https://linuxcontainers.org/incus/docs/main/metrics/). The Prometheus TLS files are:
+
+| File on the Prometheus container | Purpose |
+| --- | --- |
+| `/etc/prometheus/tls/incus/server.crt` | Trusted Incus server certificate; `server_name: kali` verifies its DNS identity |
+| `/etc/prometheus/tls/incus/metrics.crt` | Metrics-only client certificate |
+| `/etc/prometheus/tls/incus/metrics.key` | Private client key |
+
+The installed client certificate is valid for one year from 15 November 2026. Renew the certificate and its Incus trust entry before expiry. Keep TLS verification and client authentication enabled.
+
+Apply [kubelet-metrics-access.yaml](deploy/k8s/kubelet-metrics-access.yaml) to create the `prometheus-kubelet` ServiceAccount in `kube-system`, its token Secret and an RBAC grant limited to `get` on `nodes/metrics`. The external Prometheus reads the Secret's decoded token from `/etc/prometheus/kubelet/token`. It trusts the kubelet serving CA through `/etc/prometheus/kubelet/ca.crt`, copied from the K3s `server-ca.crt`. Requests go directly to each Node on port `10250` with TLS validation enabled. This manually created token persists until revoked; replace the token Secret and the Prometheus token file to rotate it.
+
+Keep keys and tokens outside the repository. The installed files are owned by `root:prometheus` with mode `0640`, inside directories with mode `0750`.
+
+Before applying a Prometheus change, save its active configuration, install the credentials, add the two resource jobs and run `promtool check config` against the resulting file. Reload Prometheus only after that check succeeds. Verify that the Incus target and both kubelet targets report `UP`. Copy both dashboard JSON files into the Grafana provider directory; the provider reads updates every 30 seconds.
+
+The existing live deployment uses datasource UID `ssle-prometheus`, while the repository's target provisioning uses UID `prometheus`. Match dashboard datasource references, including variable queries, to the installed datasource. Resource monitoring can be installed without renaming the existing application jobs, namespace or dashboard folder. The live installation remains in folder `SSLE` with application namespace `ssle`.
+
+To remove this monitoring, remove the two resource scrape jobs and reload Prometheus, then remove the two resource dashboard files. Remove the dedicated kubelet access resources and Incus metrics trust entry when no longer used. Restore the previous Incus metrics listener value if this installation was its only user. These steps do not require changing application limits or deleting stored readings.
 
 ## Security detection and IP blocking
 
