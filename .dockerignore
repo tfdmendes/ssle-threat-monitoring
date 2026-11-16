@@ -4,6 +4,7 @@
 !storage.py
 !ingestion.py
 !instrumentation.py
+!security_logging.py
 !analytics.py
 !sensor.py
 !monitoring/

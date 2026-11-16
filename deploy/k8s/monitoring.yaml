@@ -10,7 +10,7 @@ spec:
   ports:
     - name: http
       port: 5001
-      targetPort: http
+      targetPort: metrics
       nodePort: 30501
 ---
 apiVersion: apps/v1
@@ -31,7 +31,7 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: health-exporter
-          image: health-exporter:monitoring-63f3f8759e2e
+          image: health-exporter:nginx-rate-limit
           imagePullPolicy: Never
           ports:
             - name: metrics

@@ -1,6 +1,6 @@
 {
   "registry": "http://registry:5050/services",
-  "ingestion": "http://ingestion:5001/metrics",
+  "ingestion": "http://ingestion-metrics:5001/metrics",
   "storage": "http://storage:5002/stats",
   "analytics": "http://analytics:5003/average"
 }

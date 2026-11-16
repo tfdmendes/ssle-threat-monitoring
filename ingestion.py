@@ -24,11 +24,17 @@ import os
 
 import requests
 from flask import Flask, jsonify, request
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from instrumentation import configure_metrics
 from security_logging import log_ingestion_rejection
 
 app = Flask(__name__)
+# The container binds to loopback and NGINX replaces the forwarded address
+if os.environ.get("TRUST_LOCAL_PROXY") == "1":
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app, x_for=1, x_proto=0, x_host=0, x_port=0, x_prefix=0
+    )
 # Attach /metrics and request hooks to this same Flask app
 configure_metrics(app)
 

@@ -1,3 +1,83 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingestion-proxy
+  namespace: threat-monitoring
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log /dev/stderr warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        log_format ingestion_proxy escape=json
+            '{"event":"ingestion_proxy_request","srcip":"$remote_addr",'
+            '"method":"$request_method","path":"$uri","status":$status,'
+            '"limit_status":"$limit_req_status","duration":$request_time,'
+            '"upstream_status":"$upstream_status"}';
+        access_log /dev/stdout ingestion_proxy;
+
+        # One shared budget for this Pod, independent of client IP or Host
+        limit_req_zone $server_name zone=ingestion_total:1m rate=20r/s;
+
+        # Replace client-supplied forwarding headers instead of appending to them
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_connect_timeout 2s;
+        proxy_read_timeout 10s;
+        proxy_send_timeout 10s;
+        # A stored reading must never be submitted again by the proxy
+        proxy_next_upstream off;
+
+        server {
+            listen 8080;
+            server_name _;
+
+            location = /ingest {
+                if ($request_method != POST) { return 405; }
+                limit_req zone=ingestion_total burst=5 nodelay;
+                limit_req_status 429;
+                error_page 429 = @rate_limited;
+                proxy_pass http://127.0.0.1:5001;
+            }
+
+            location @rate_limited {
+                default_type application/json;
+                add_header Retry-After 1 always;
+                return 429 '{"error":"Ingestion request rate exceeded"}';
+            }
+
+            location / {
+                return 404;
+            }
+        }
+
+        # The monitoring Service cannot forward requests to /ingest
+        server {
+            listen 9090;
+            server_name _;
+
+            location = /metrics {
+                if ($request_method != GET) { return 405; }
+                proxy_pass http://127.0.0.1:5001;
+            }
+
+            location = /healthz {
+                access_log off;
+                return 200;
+            }
+
+            location / {
+                return 404;
+            }
+        }
+    }
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -5,6 +85,9 @@ metadata:
   namespace: threat-monitoring
 spec:
   replicas: 1
+  # The rate budget is local to one Pod, including during replacement
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: ingestion
@@ -13,13 +96,11 @@ spec:
       labels:
         app: ingestion
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: ingestion
-          image: ingestion:wazuh-f2a0194b4dd5
+          image: ingestion:nginx-rate-limit
           imagePullPolicy: Never
-          ports:
-            - name: http
-              containerPort: 5001
           env:
             - name: SERVICE_URL
               value: http://ingestion:5001
@@ -28,10 +109,36 @@ spec:
             - name: STORAGE_URL
               value: http://storage:5002
           readinessProbe:
-            tcpSocket:
-              port: http
+            exec:
+              command:
+                - python
+                - -c
+                - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5001/metrics', timeout=1).close()"
             periodSeconds: 10
             timeoutSeconds: 2
+        - name: nginx
+          image: nginx:1.30.6-alpine
+          imagePullPolicy: Never
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          volumeMounts:
+            - name: proxy-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: metrics
+            periodSeconds: 10
+            timeoutSeconds: 2
+      volumes:
+        - name: proxy-config
+          configMap:
+            name: ingestion-proxy
 ---
 apiVersion: v1
 kind: Service
@@ -45,3 +152,20 @@ spec:
     - name: http
       port: 5001
       targetPort: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-public
+  namespace: threat-monitoring
+spec:
+  type: NodePort
+  # Preserve the external client IP and reach only the local ingestion Pod
+  externalTrafficPolicy: Local
+  selector:
+    app: ingestion
+  ports:
+    - name: http
+      port: 5001
+      targetPort: http
+      nodePort: 30502

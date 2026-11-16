@@ -1,6 +1,6 @@
 # Threat Monitoring
 
-This project combines a temperature-reading application with availability monitoring and security detection. It uses Prometheus and Grafana to show service health, and Wazuh to detect repeated invalid requests and temporarily block their source IP.
+This project combines a temperature-reading application with availability monitoring and security detection. It uses Prometheus and Grafana to show service health, NGINX to limit ingestion traffic, and Wazuh to detect repeated invalid requests and temporarily block their source IP.
 
 The repository contains the application, Dockerfiles, Kubernetes manifests and monitoring configuration. The K3s cluster, Incus containers and monitoring servers are set up separately. Saving a configuration here does not apply it to a running deployment.
 
@@ -8,7 +8,8 @@ The repository contains the application, Dockerfiles, Kubernetes manifests and m
 
 ```mermaid
 flowchart LR
-    Sensor["Simulated sensor"] -->|"POST /ingest"| Ingestion["Ingestion :5001"]
+    Sensor["Simulated sensor"] -->|"POST /ingest"| Proxy["NGINX in Kubernetes"]
+    Proxy -->|"Admitted request"| Ingestion["Ingestion: loopback :5001"]
     Ingestion -->|"POST /store"| Storage["Storage :5002"]
     Storage -->|"Write reading"| DB[("SQLite: readings.db")]
     Client["HTTP client"] -->|"GET /average"| Analytics["Analytics :5003"]
@@ -16,13 +17,14 @@ flowchart LR
     Ingestion -.->|"POST /register at startup"| Registry["Registry :5050"]
 ```
 
-The sensor generates a temperature between 20 and 30 and sends it to ingestion. Ingestion checks the reading before it reaches storage. Storage owns the database, and analytics asks storage for the count and sum needed to calculate the average.
+The sensor generates a temperature between 20 and 30. In Kubernetes, NGINX admits or rejects the request before ingestion checks the reading. Local development runs ingestion directly. Ingestion checks the reading before it reaches storage. Storage owns the database, and analytics asks storage for the count and sum needed to calculate the average.
 
 Registry keeps the latest URL and registration time for each service name. Registering the same name replaces its previous entry. Only ingestion registers automatically. Ingestion uses its configured storage URL directly; registry is not consulted for each reading. Registry entries are held in memory and are lost on restart.
 
 | Component | Source | Role |
 | --- | --- | --- |
 | Sensor | [sensor.py](sensor.py) | Generates and sends readings |
+| NGINX | [ingestion.yaml](deploy/k8s/ingestion.yaml) | Limits POST traffic and separates ingestion from metrics access |
 | Ingestion | [ingestion.py](ingestion.py) | Validates readings and forwards accepted data |
 | Storage | [storage.py](storage.py) | Saves readings and returns database statistics |
 | Analytics | [analytics.py](analytics.py) | Calculates the average from storage statistics |
@@ -43,19 +45,27 @@ Ingestion requires a JSON object, a non-empty device ID and a numeric temperatur
 ```mermaid
 sequenceDiagram
     participant S as Sensor or test client
+    participant P as NGINX
     participant I as Ingestion
     participant D as Storage
     participant DB as SQLite
-    S->>I: POST /ingest
+    S->>P: POST /ingest
+    alt Rate limit exceeded
+        P-->>S: HTTP 429, Retry-After: 1
+    else Request admitted
+        P->>I: POST /ingest with observed client IP
     alt Invalid reading
         I->>I: Log the rejection and source IP
-        I-->>S: HTTP 400
+        I-->>P: HTTP 400
+        P-->>S: HTTP 400
     else Valid reading
         I->>D: POST /store
         D->>DB: Save and commit the reading
         DB-->>D: Write complete
         D-->>I: HTTP 200
-        I-->>S: HTTP 200
+        I-->>P: HTTP 200
+        P-->>S: HTTP 200
+    end
     end
 ```
 
@@ -90,7 +100,7 @@ Open one terminal per service, from the repository root, and activate the same e
 
 Stop each process with Ctrl+C. Storage keeps `readings.db` in its working directory, so readings remain after a restart. Ingestion exits if its initial registration fails; start it again after registry is available. It does not renew its registration automatically.
 
-The default URLs work when all processes run on the same machine. These environment variables change the connections between services; they do not change the addresses on which the HTTP servers listen.
+The default URLs work when all processes run on the same machine. Leave `TRUST_LOCAL_PROXY` unset for these direct local runs. The ingestion Dockerfile enables it only for the loopback-only server behind NGINX. These environment variables change the connections between services; they do not change the addresses on which the HTTP servers listen.
 
 | Process | Variable | Default |
 | --- | --- | --- |
@@ -122,14 +132,17 @@ K3s provides the Kubernetes cluster. A **Node** is a machine that runs applicati
 flowchart TB
     subgraph Cluster["K3s: namespace threat-monitoring"]
         Sensor["Sensor Pod"] --> IngestionService["Service: ingestion"]
-        IngestionService --> Ingestion["Ingestion Pod"]
+        IngestionService --> Proxy["NGINX :8080, ingestion Pod"]
+        Public["NodePort 30502, Local"] --> Proxy
+        Proxy --> Ingestion["Ingestion: loopback :5001, same Pod"]
         Ingestion --> StorageService["Service: storage"]
         Analytics["Analytics Pod"] --> StorageService
         StorageService --> Storage["Storage Pod"]
         Ingestion -.-> RegistryService["Service: registry"]
         RegistryService --> Registry["Registry Pod"]
         Storage --> Volume[("Persistent storage on one Node")]
-        Metrics["NodePort 30501"] --> Ingestion
+        Metrics["NodePort 30501"] --> MetricsProxy["NGINX :9090, metrics only"]
+        MetricsProxy --> Ingestion
         HealthPort["NodePort 30800"] --> Exporter["Health exporter Pod"]
     end
     Prometheus["External Prometheus"] --> Metrics
@@ -142,29 +155,60 @@ The [Kubernetes manifests](deploy/k8s) define the application. The [Dockerfiles]
 - Build the images with the names and tags specified in the manifests. Import each image into every Node where its Pod can run. The `Never` image policy means Kubernetes will not download a missing image.
 - Start registry and storage before ingestion, then start the remaining components and monitoring endpoints. All manifests use the `threat-monitoring` namespace.
 
-**The ingestion build currently needs a correction:** [.dockerignore](.dockerignore) excludes `security_logging.py`, although the Dockerfile copies it. Add that file to the allowlist before building ingestion from this checkout.
+Build ingestion as `ingestion:nginx-rate-limit`, using [its Dockerfile](deploy/docker/ingestion/Dockerfile) and the repository root as the build context. The build includes `security_logging.py`. Rebuild `health-exporter:nginx-rate-limit` with [its Dockerfile](deploy/docker/health-exporter/Dockerfile), which copies the updated health target file into the image. Import both images and `nginx:1.30.6-alpine` into each eligible Node, matching the Node architecture. Apply the ConfigMap in [ingestion.yaml](deploy/k8s/ingestion.yaml) before starting its Deployment. Apply [monitoring.yaml](deploy/k8s/monitoring.yaml) with the same change.
 
 The manifests do not assign the Pods to particular Nodes. If a Pod reports `ErrImageNeverPull`, check that its image exists on the selected Node. In the deployment inspected on 14 November 2026, only ingestion's image was present on both Nodes; some other components could not start if placed on the other Node.
 
 Storage mounts a persistent volume at `/data`, where it keeps `readings.db`. The volume claim, `storage-data`, requests 1 GiB through `local-path`. The data stays on the Node associated with that volume. Replacing the storage Pod does not erase the database, but deleting the volume can lose the readings. There is no database replication or backup.
 
-Sensor and storage stop their old Pod before starting a replacement during an update. The other Deployments use rolling updates. Each component still has only one instance, so replacement does not guarantee uninterrupted service. Readiness checks control when a Pod can receive traffic: ingestion and analytics check an open port; storage and the health exporter check an HTTP endpoint. Registry has no readiness check. Only the health exporter has a liveness check to trigger a restart after repeated failures.
+Sensor, storage and ingestion stop their old Pod before starting a replacement during an update. Ingestion uses `Recreate` so two independent NGINX rate budgets do not overlap during an update. The other Deployments use rolling updates. Each component still has only one instance, so replacement does not guarantee uninterrupted service. Readiness checks control when a Pod can receive traffic: ingestion checks its loopback `/metrics` endpoint, NGINX checks its monitoring listener, analytics checks an open port, and storage and the health exporter check an HTTP endpoint. Registry has no readiness check. Only the health exporter has a liveness check to trigger a restart after repeated failures.
 
 Prometheus, Grafana and the Wazuh manager run outside these Deployments. Wazuh Agents must be installed separately on the Nodes where ingestion can run; the repository does not deploy them through Kubernetes.
 
 ### External access in the deployment
 
-A NodePort makes a Service reachable through a Node's IP and an external port. The monitoring manifests expose ports `30501` and `30800`. The deployed environment also has a separate ingestion entry point for external tests:
+A NodePort makes a Service reachable through a Node's IP and an external port. The target manifests define these entry points:
 
-| Entry point | Use | Saved in this repository? |
+| Entry point | Target | Allowed application endpoint |
 | --- | --- | --- |
-| `10.255.255.10:30501` | Ingestion metrics for Prometheus | Service in [monitoring.yaml](deploy/k8s/monitoring.yaml); the firewall restriction to Prometheus is configured separately |
-| `10.255.255.10:30800` | Health exporter metrics | Service in [monitoring.yaml](deploy/k8s/monitoring.yaml) |
-| `10.255.255.11:30502` | External ingestion tests | Deployment-only ingestion entry point; absent from [ingestion.yaml](deploy/k8s/ingestion.yaml) |
+| `ingestion:5001` | NGINX port `8080` | `POST /ingest` |
+| NodePort `30502` | NGINX port `8080` | `POST /ingest` |
+| `ingestion-metrics:5001` and NodePort `30501` | NGINX port `9090` | `GET /metrics` |
+| NodePort `30800` | Health exporter | Exporter metrics |
 
-The test entry point uses `externalTrafficPolicy: Local`: it forwards only to a Pod on the contacted Node and preserves the client IP during that forwarding. In the verified deployment, ingestion ran on `k3s-node1` at `10.255.255.11`. These addresses and placements describe the deployment inspected on 14 November 2026.
+The public ingestion Service uses `externalTrafficPolicy: Local`. External clients must contact the Node hosting the ingestion Pod; traffic through a Node without a local ready Pod is not forwarded. This preserves the source IP observed by NGINX. On 14 November 2026, ingestion was on `k3s-node1` at `10.255.255.11`; verify its current placement before choosing an address. Metrics retain cluster-wide forwarding so Prometheus can keep scraping `10.255.255.10:30501`.
 
-Both ingestion entry points reach the same HTTP server, including `/ingest` and `/metrics`. Restricting port `30501` to Prometheus does not restrict access to `/metrics` through port `30502`.
+### Ingestion rate limiting and client IP
+
+NGINX and ingestion run in the same Pod and share its network namespace. Ingestion binds only to `127.0.0.1:5001`. Other Pods and external clients cannot reach that listener through the Pod IP, ClusterIP or a NodePort. The ingestion Service now targets NGINX port `8080`, and the monitoring Service targets port `9090`. Both listeners reject unconfigured paths; the metrics listener cannot forward `POST /ingest`, and the public listener does not expose `/metrics`. The monitoring listener also provides `/healthz` for readiness checks.
+
+This restriction does not depend on NetworkPolicy enforcement. Administrative access such as `kubectl exec` or port forwarding is outside this client boundary, as is a compromised container inside the ingestion Pod. Storage remains an internal service with its existing trust model; this change does not authenticate clients or restrict direct access to `/store` from other workloads.
+
+The ConfigMap sets a shared rate of **20 POST requests per second**, with **five excess requests allowed as a burst**, across all clients of the single ingestion Pod. `nodelay` forwards an allowed burst immediately; further excess receives JSON with HTTP `429` and `Retry-After: 1`. This is a rate limit, not a limit on requests in progress. The values are initial lab settings, not measured capacity. One client can consume the shared budget. Adding ingestion replicas would create additional independent budgets and requires a separate design for a cluster-wide limit.
+
+NGINX replaces `X-Forwarded-For` and `X-Real-IP` with its observed peer address instead of trusting headers supplied by the client. In the container, `TRUST_LOCAL_PROXY=1` enables Werkzeug `ProxyFix` for exactly one forwarded address, with trust in all other forwarded fields disabled. This is safe only with the loopback listener and the colocated proxy. Do not expose Flask on `0.0.0.0` with this setting. Ingestion's existing `request.remote_addr` then contains the observed client IP, and the Wazuh JSON event keeps the same `srcip` field and format. External IP preservation assumes a direct connection to the NodePort; a NAT or another proxy in front would need its own verified design.
+
+The containers share a Node, so the Agent that reports the rejection is on the Node accepting the public request. Existing Wazuh decoder, rules and Active Response configuration are unchanged. Requests rejected by NGINX with `429` never reach ingestion validation and do not produce its `400` rejection events. Test repeated invalid readings below the rate limit when validating Wazuh correlation.
+
+NGINX writes JSON access records to the `nginx` container output, including `srcip`, status, duration, upstream status and `limit_status`. Use these records to distinguish `429` rejections from requests admitted to ingestion. Existing ingestion Prometheus metrics count only requests that reach Flask; they do not count proxy rejections. Health checks use `http://ingestion-metrics:5001/metrics` and remain outside the POST rate budget.
+
+### Installation and validation boundary
+
+On 15 November 2026, the proxy was deployed in the existing `ssle` namespace. The running images are `ssle-ingestion:nginx-c89c0d601e8e`, `ssle-health-exporter:nginx-c89c0d601e8e` and `nginx:1.30.6-alpine`. The deployment keeps the existing `ssle-*` Service names, `ssle_ingestion_*` Prometheus metrics and Wazuh collection path. Ingestion is assigned to `k3s-node1` to keep the public entry point at `http://10.255.255.11:30502/ingest`. The existing `ssle-ingestion` Service supplies NodePort `30502`; no second public Service was created. Storage, its Pod and its volume were preserved. Previous resource specifications and the deployed configuration are saved on Kali under `/var/tmp/ssle-nginx-20261115` for rollback.
+
+The live check sent 40 valid POST requests with concurrency 2: eight returned `200` and 32 returned `429`. A later request succeeded. Direct backend access through the Pod IP failed, and the monitoring listener rejected ingestion requests. Wazuh rule `100201` recorded the actual Kali client IP, `10.255.255.1`, despite forged forwarding headers. All four health checks were healthy and both application Prometheus targets were UP. The ten readings created for this check were removed using their exclusive device IDs. Timed Wazuh blocking and recovery were not repeated during this deployment. These counts describe this run, not a fixed result for every burst.
+
+The repository manifests still use the target names for a future namespace rename. Before another installation, inspect all Services selecting ingestion and map the configuration to the chosen namespace without creating a new database or discarding the existing volume. Reuse the existing NodePort `30502` Service; two Services cannot claim the same NodePort. Keep the metrics Service on the NGINX metrics listener and preserve the existing firewall restriction on port `30501`.
+
+The ConfigMap is mounted using `subPath`; editing it requires restarting the ingestion Deployment to load the new configuration. The single Pod's `Recreate` strategy causes a brief interruption. Restore the previous image, manifests and health target file together to roll back; retain the database volume. Rolling back to the old direct listener removes the proxy protection.
+
+Before calling the deployment verified, check the following in the isolated lab:
+
+- A valid external reading reaches storage through NGINX, and metrics still scrape successfully
+- An invalid reading with forged forwarding headers records the actual test client IP in ingestion logs and in a decoded Wazuh alert
+- The same bounded workload from Guide 5 produces the expected admitted and rejected requests, with no automatic resubmission of POST requests
+- Direct connections to the Pod IP on `5001` fail, and neither `/metrics` on the public listener nor `/ingest` on the monitoring listener reaches Flask
+- Wazuh still correlates invalid readings below the rate limit, and its timed block and recovery work on the public entry point
 
 ### Naming changes and the running deployment
 
