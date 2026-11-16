@@ -188,9 +188,9 @@ The ConfigMap sets a shared rate of **20 POST requests per second**, with **five
 
 NGINX replaces `X-Forwarded-For` and `X-Real-IP` with its observed peer address instead of trusting headers supplied by the client. In the container, `TRUST_LOCAL_PROXY=1` enables Werkzeug `ProxyFix` for exactly one forwarded address, with trust in all other forwarded fields disabled. This is safe only with the loopback listener and the colocated proxy. Do not expose Flask on `0.0.0.0` with this setting. Ingestion's existing `request.remote_addr` then contains the observed client IP, and the Wazuh JSON event keeps the same `srcip` field and format. External IP preservation assumes a direct connection to the NodePort; a NAT or another proxy in front would need its own verified design.
 
-The containers share a Node, so the Agent that reports the rejection is on the Node accepting the public request. Existing Wazuh decoder, rules and Active Response configuration are unchanged. Requests rejected by NGINX with `429` never reach ingestion validation and do not produce its `400` rejection events. Test repeated invalid readings below the rate limit when validating Wazuh correlation.
+The containers share a Node, so the Agent that reports the rejection is on the Node accepting the public request. The ingestion decoder, rules and Active Response configuration are unchanged. Separate NGINX collection, decoding and alert rules report rate-limit rejections without an Active Response. Requests rejected by NGINX with `429` never reach ingestion validation and do not produce its `400` rejection events. Test repeated invalid readings below the rate limit when validating Wazuh correlation.
 
-NGINX writes JSON access records to the `nginx` container output, including `srcip`, status, duration, upstream status and `limit_status`. Use these records to distinguish `429` rejections from requests admitted to ingestion. Existing ingestion Prometheus metrics count only requests that reach Flask; they do not count proxy rejections. Health checks use `http://ingestion-metrics:5001/metrics` and remain outside the POST rate budget.
+NGINX writes JSON access records to the `nginx` container output, including `srcip`, status, duration, upstream status and `limit_status`. The Wazuh Agents collect these container logs, and rules `100211` and `100212` make rate-limit rejections available as alerts. Other NGINX access events are classified without a separate alert. Use these records to distinguish `429` rejections from requests admitted to ingestion. Existing ingestion Prometheus metrics count only requests that reach Flask; they do not count proxy rejections. Health checks use `http://ingestion-metrics:5001/metrics` and remain outside the POST rate budget.
 
 ### Installation and validation boundary
 
@@ -330,10 +330,31 @@ flowchart TD
 | `100200` | 0 | Identifies ingestion events without creating a separate alert |
 | `100201` | 3 | Identifies one rejected `POST /ingest` with HTTP 400 |
 | `100202` | 10 | Detects ten rejection events from the same IP and Agent within 30 seconds |
+| `100210` | 0 | Identifies NGINX ingestion access events without a separate alert |
+| `100211` | 3 | Reports a rejected `POST /ingest` with status `429` and `limit_status=REJECTED` |
+| `100212` | 7 | Reports 20 rate-limit rejections within 30 seconds on the same Agent, across all client IPs |
 
 A rule's level represents alert severity. The count of ten comes from the frequency setting, not from level 10.
 
 The **Active Response** configuration links rule `100202` to `firewall-drop`. When that rule fires, the manager tells the reporting Agent to block the source IP on its Node for 60 seconds. The block affects traffic from that IP, including valid requests. Removing the block does not delete the recorded alerts.
+
+### NGINX rate-limit alerts
+
+The [NGINX Agent fragment](deploy/wazuh/nginx-agent.conf) collects `/var/log/containers/ingestion-*_threat-monitoring_nginx-*.log` on each eligible Node. It uses the prefix `nginx-ingestion:` so the [dedicated decoder](deploy/wazuh/nginx-decoder.xml) can skip the CRI timestamp and stdout header before decoding the JSON. Records from stderr do not match this decoder. The [rules](deploy/wazuh/nginx-rules.xml) require the proxy event name, `POST /ingest`, HTTP `429` and `limit_status=REJECTED` before creating an alert.
+
+Rule `100211` has level 3, matching the manager's current minimum alert level. Rule `100212` raises the event to level 7 at 20 qualifying rejections within 30 seconds. The event that triggers correlation is stored at level 7 instead of producing a second copy at level 3. Accepted requests and unrelated responses do not produce these rate-limit alerts. Full event archiving is not enabled by this integration.
+
+The count includes different client IPs on one Agent because the NGINX request budget is also shared. A higher-level alert describes pressure on the service, not an accusation against its last `srcip`. The 20-event threshold and 30-second window are initial lab settings. A short burst can reach this count; the rule does not require load to last the entire window, and it does not establish a malicious DoS.
+
+Neither rule is linked to an Active Response. Existing IP blocking for rule `100202` remains separate and applies to repeated invalid readings, not to these proxy rejections. No manager-wide alert threshold or archive setting needs to change.
+
+In the Wazuh dashboard's alert search, select the relevant time range and use `rule.groups: nginx_rate_limit` for both alert levels, or `rule.id: 100212` for the higher-level alerts. Useful event fields are `data.srcip`, `data.status`, `data.limit_status`, `data.path` and `agent.name`.
+
+The deployed namespace remains `ssle`. Its Agent collection path is `/var/log/containers/ssle-ingestion-*_ssle_nginx-*.log`; the decoder prefix and the rule IDs are the same as in this checkout. New files are installed as `/var/ossec/etc/decoders/nginx_ingestion.xml` and `/var/ossec/etc/rules/nginx_ingestion.xml`. Validate with `wazuh-analysisd -t` on the manager and `wazuh-logcollector -t` on the Agents before restarting the affected Wazuh services. This does not require restarting NGINX or the application Pods.
+
+On 16 November 2026, these rules and the NGINX collectors were installed on the live manager and both K3s Agents. A bounded check of 40 valid POST requests with concurrency 2 returned eight `200` responses and 32 `429` responses. The indexer contained 31 alerts for rule `100211` at level 3 and one for rule `100212` at level 7, all with the real client IP `10.255.255.1`. The same client received `200` after correlation. The manager's Active Response configuration was unchanged, and no new-rule action appeared in the Agent's Active Response log. All four application health checks passed. The ten readings created by the check were removed using their exclusive device IDs. Original Wazuh configurations are saved on Kali under `/var/tmp/ssle-nginx-wazuh-20261116/rollback`.
+
+To disable this integration, remove its `localfile` block from each Agent and its decoder and rules files from the manager, validate the remaining configuration and restart the affected Wazuh services. Preserve other collection blocks, rules and Active Responses.
 
 ### Configuration files
 
@@ -343,6 +364,9 @@ The **Active Response** configuration links rule `100202` to `firewall-drop`. Wh
 | [ingestion-decoder.xml](deploy/wazuh/ingestion-decoder.xml) | Install as `/var/ossec/etc/decoders/ingestion.xml` on the manager |
 | [ingestion-rules.xml](deploy/wazuh/ingestion-rules.xml) | Install as `/var/ossec/etc/rules/ingestion.xml` on the manager |
 | [ingestion-active-response.conf](deploy/wazuh/ingestion-active-response.conf) | Add its `active-response` block to the manager's `/var/ossec/etc/ossec.conf` |
+| [nginx-agent.conf](deploy/wazuh/nginx-agent.conf) | Add its log-collection block to each eligible Agent's `ossec.conf` |
+| [nginx-decoder.xml](deploy/wazuh/nginx-decoder.xml) | Install as `/var/ossec/etc/decoders/nginx_ingestion.xml` on the manager |
+| [nginx-rules.xml](deploy/wazuh/nginx-rules.xml) | Install as `/var/ossec/etc/rules/nginx_ingestion.xml` on the manager |
 
 The Agent configuration reads `/var/log/containers/ingestion-*_threat-monitoring_ingestion-*.log`. The decoder skips the container log header before reading the JSON event.
 

@@ -1,0 +1,24 @@
+<group name="threat-monitoring,nginx,">
+  <rule id="100210" level="0">
+    <decoded_as>nginx-ingestion-cri</decoded_as>
+    <field name="event" type="pcre2">^ingestion_proxy_request$</field>
+    <description>NGINX ingestion access event</description>
+  </rule>
+
+  <rule id="100211" level="3">
+    <if_sid>100210</if_sid>
+    <field name="method" type="pcre2">^POST$</field>
+    <field name="path" type="pcre2">^/ingest$</field>
+    <status>^429$</status>
+    <field name="limit_status" type="pcre2">^REJECTED$</field>
+    <description>NGINX rate limit rejected POST /ingest from $(srcip)</description>
+    <group>nginx_rate_limit,</group>
+  </rule>
+
+  <!-- Count all client IPs on the same Agent to match the shared proxy budget -->
+  <rule id="100212" level="7" frequency="20" timeframe="30">
+    <if_matched_sid>100211</if_matched_sid>
+    <description>NGINX rate limit reached 20 rejections in 30 seconds on this Agent</description>
+    <group>nginx_rate_limit,nginx_rate_limit_persistent,</group>
+  </rule>
+</group>

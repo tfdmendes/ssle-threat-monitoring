@@ -1,0 +1,4 @@
+<decoder name="nginx-ingestion-cri">
+  <prematch type="pcre2">^nginx-ingestion: \S+ stdout F (?=\{)</prematch>
+  <plugin_decoder offset="after_prematch">JSON_Decoder</plugin_decoder>
+</decoder>
