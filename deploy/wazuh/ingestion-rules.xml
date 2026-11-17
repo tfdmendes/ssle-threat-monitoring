@@ -24,6 +24,7 @@
     <!-- Count only events from the same source IP within this agent -->
     <same_srcip />
     <description>Ingestion rejected repeated readings from $(srcip) within 30 seconds</description>
+    <options>alert_by_email</options>
     <group>suspicious_activity,</group>
   </rule>
 </group>

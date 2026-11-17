@@ -1,0 +1,10 @@
+<group name="threat-monitoring,mail,">
+  <rule id="100220" level="3">
+    <if_sid>3500</if_sid>
+    <location type="pcre2">/var/log/mail\.log$</location>
+    <match type="pcre2">^spamd: identified spam </match>
+    <description>SpamAssassin identified spam (score $(spam_score), threshold $(spam_threshold))</description>
+    <options>alert_by_email</options>
+    <group>spam_detected,</group>
+  </rule>
+</group>

@@ -1,0 +1,33 @@
+global:
+  smtp_from: alertmanager@mail-container.incus
+  smtp_smarthost: "10.255.255.119:25"
+  smtp_require_tls: true
+  smtp_tls_config:
+    ca_file: /etc/prometheus/alertmanager/mail-ca.crt
+    server_name: mail-container.incus
+
+route:
+  receiver: project-mail
+  group_by: [alertname, service, job]
+  group_wait: 15s
+  group_interval: 1m
+  repeat_interval: 4h
+
+receivers:
+  - name: project-mail
+    email_configs:
+      - to: project-alerts@mail-container.incus
+        send_resolved: true
+        html: ''
+        headers:
+          Subject: '[SSLE] {{ .Status | toUpper }}: {{ .GroupLabels.alertname }}'
+        text: |
+          {{ range .Alerts }}
+          Status: {{ .Status }}
+          Alert: {{ .Labels.alertname }}
+          Service: {{ if .Labels.service }}{{ .Labels.service }}{{ else }}not specified{{ end }}
+          Job: {{ if .Labels.job }}{{ .Labels.job }}{{ else }}not specified{{ end }}
+          Severity: {{ if .Labels.severity }}{{ .Labels.severity }}{{ else }}not specified{{ end }}
+          Summary: {{ .Annotations.summary }}
+          Description: {{ .Annotations.description }}
+          {{ end }}

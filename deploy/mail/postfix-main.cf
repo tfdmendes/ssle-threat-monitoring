@@ -1,0 +1,6 @@
+inet_interfaces = 127.0.0.1, [::1], 10.255.255.119
+mailbox_command = /usr/bin/procmail -a "$EXTENSION"
+
+smtpd_tls_cert_file = /etc/ssl/project-mail/server.crt
+smtpd_tls_key_file = /etc/ssl/project-mail/server.key
+smtpd_tls_security_level = may

@@ -19,6 +19,7 @@
   <rule id="100212" level="7" frequency="20" timeframe="30">
     <if_matched_sid>100211</if_matched_sid>
     <description>NGINX rate limit reached 20 rejections in 30 seconds on this Agent</description>
+    <options>alert_by_email</options>
     <group>nginx_rate_limit,nginx_rate_limit_persistent,</group>
   </rule>
 </group>

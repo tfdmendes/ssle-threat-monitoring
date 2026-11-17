@@ -1,0 +1,6 @@
+<decoder name="project-spamd">
+  <program_name>^spamd$</program_name>
+  <prematch>^spamd: identified spam </prematch>
+  <regex type="pcre2">^spamd: identified spam \((-?\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)\) for ([^: ]+):(\d+) in ([\d.]+) seconds, (\d+) bytes\.</regex>
+  <order>spam_score,spam_threshold,scan_user,scan_uid,scan_duration,message_bytes</order>
+</decoder>

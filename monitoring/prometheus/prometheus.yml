@@ -5,7 +5,9 @@ global:
     monitor: example
 
 alerting:
-  alertmanagers: []
+  alertmanagers:
+    - static_configs:
+        - targets: ["localhost:9093"]
 
 rule_files:
   - rules/availability.yml

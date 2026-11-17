@@ -1,0 +1,22 @@
+SHELL=/bin/sh
+PATH=/usr/bin:/bin
+UMASK=077
+DEFAULT=$ORGMAIL
+
+:0
+* ^X-Spam-Flag:[ 	]*YES
+{
+    # Global recipes otherwise retain Procmail's setuid privileges
+    DROPPRIVS=yes
+
+    # Disable last-resort inbox delivery for messages already classified as spam
+    DEFAULT=
+    ORGMAIL=
+
+    :0:
+    $HOME/mail/Junk
+
+    # Defer failed quarantine deliveries instead of placing spam in the inbox
+    EXITCODE=75
+    HOST=quarantine-delivery-failed
+}
