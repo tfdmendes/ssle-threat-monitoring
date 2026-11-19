@@ -1,0 +1,9 @@
+<group name="threat-monitoring,apache,attack,">
+  <rule id="100100" level="10">
+    <if_group>web|attack|attacks</if_group>
+    <location type="pcre2">^\(apache-container\) [^>]+->/var/log/apache2/access\.log$</location>
+    <list field="srcip" lookup="address_match_key">etc/lists/blacklist-alienvault</list>
+    <description>Apache request from an IP on the reputation list: $(srcip)</description>
+    <group>ip_reputation,</group>
+  </rule>
+</group>
