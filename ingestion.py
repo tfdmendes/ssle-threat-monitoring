@@ -1,10 +1,10 @@
 """
-The Ingestion Service receives data from different sources and forwards it to the appropriate services
-In this system, it receives temperature readings from sensors and forwards them to the Storage Service
+Checks each sensor's API key and sends valid temperature readings to Storage.
 
 Temperature Sensor
        |
-       | POST /ingest
+       | POST /ingest over HTTPS (through NGINX in K3s)
+       | Authorization: Bearer <sensor key>
        | JSON: {"device_id": "sensor-001", "temperature": 25.5}
        v
  Ingestion Service
@@ -21,17 +21,20 @@ Temperature Sensor
 """
 
 import os
+import sqlite3
 
 import requests
 from flask import Flask, jsonify, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from devices import authenticate, init_db
 from instrumentation import configure_metrics
 from security_logging import log_ingestion_rejection
 
 app = Flask(__name__)
+TRUST_LOCAL_PROXY = os.environ.get("TRUST_LOCAL_PROXY") == "1"
 # The container binds to loopback and NGINX replaces the forwarded address
-if os.environ.get("TRUST_LOCAL_PROXY") == "1":
+if TRUST_LOCAL_PROXY:
     app.wsgi_app = ProxyFix(
         app.wsgi_app, x_for=1, x_proto=0, x_host=0, x_port=0, x_prefix=0
     )
@@ -53,6 +56,13 @@ def reject_reading(reason, message):
     return jsonify({"error": message}), 400
 
 
+def reject_sensor(reason, status):
+    log_ingestion_rejection(request, reason, status)
+    if status == 401:
+        return jsonify({"error": "Invalid sensor credential"}), 401, {"WWW-Authenticate": "Bearer"}
+    return jsonify({"error": "Credential is not authorized for this device ID"}), 403
+
+
 def register():
     # Registration advertises ingestion while STORAGE_URL determines how to reach storage
     response = requests.post(
@@ -69,17 +79,30 @@ def register():
 
 @app.route("/ingest", methods=["POST"])
 def ingest():
-    # Reject malformed readings before sending anything to storage
+    # Use the key to find the sensor before reading the JSON.
+    try:
+        device_id = authenticate(request.headers.get("Authorization", ""))
+    except sqlite3.Error:
+        app.logger.error("Device credentials are unavailable")
+        return jsonify({"error": "Device credentials are unavailable"}), 503
+
+    if device_id is None:
+        return reject_sensor("invalid_sensor_credential", 401)
+
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
         return reject_reading("invalid_json_object", "Expected a JSON object")
 
-    device_id = data.get("device_id")
     temperature = data.get("temperature")
 
-    if not isinstance(device_id, str) or not device_id.strip():
-        return reject_reading("invalid_device_id", "Missing or invalid device_id")
+    # If the JSON includes an ID, check that it names the sensor found by its key.
+    if "device_id" in data:
+        declared_id = data["device_id"]
+        if not isinstance(declared_id, str) or not declared_id.strip():
+            return reject_reading("invalid_device_id", "Invalid device_id")
+        if declared_id != device_id:
+            return reject_sensor("sensor_identity_mismatch", 403)
 
     # Python treats booleans as integers, so reject them explicitly
     if isinstance(temperature, bool) or not isinstance(
@@ -87,6 +110,7 @@ def ingest():
     ):
         return reject_reading("invalid_temperature", "Missing or invalid temperature")
 
+    # Save the temperature under the ID found in devices.db.
     payload = {
         "device_id": device_id,
         "temperature": temperature,
@@ -112,10 +136,20 @@ def ingest():
 
 
 if __name__ == "__main__":
-    # Require successful registration before accepting readings
+    tls = None
+    if not TRUST_LOCAL_PROXY:
+        certificate = os.environ.get("INGESTION_TLS_CERT")
+        private_key = os.environ.get("INGESTION_TLS_KEY")
+        if not certificate or not private_key:
+            raise SystemExit("Set INGESTION_TLS_CERT and INGESTION_TLS_KEY for local HTTPS")
+        tls = (certificate, private_key)
+
     try:
+        init_db()
         register()
+    except sqlite3.Error:
+        raise SystemExit("Could not initialize the device database")
     except requests.RequestException as error:
         raise SystemExit(f"Could not register ingestion service: {error}")
 
-    app.run(host="127.0.0.1", port=5001)
+    app.run(host="127.0.0.1", port=5001, ssl_context=tls)

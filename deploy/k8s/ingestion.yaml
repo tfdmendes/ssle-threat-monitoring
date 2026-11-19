@@ -35,8 +35,11 @@ data:
         proxy_next_upstream off;
 
         server {
-            listen 8080;
+            listen 8080 ssl;
             server_name _;
+            ssl_certificate /etc/ingestion-tls/tls.crt;
+            ssl_certificate_key /etc/ingestion-tls/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
 
             location = /ingest {
                 if ($request_method != POST) { return 405; }
@@ -99,15 +102,20 @@ spec:
       automountServiceAccountToken: false
       containers:
         - name: ingestion
-          image: ingestion:nginx-rate-limit
+          image: ingestion:sensor-auth
           imagePullPolicy: Never
           env:
             - name: SERVICE_URL
-              value: http://ingestion:5001
+              value: https://ingestion:5001
             - name: REGISTRY_URL
               value: http://registry:5050
             - name: STORAGE_URL
               value: http://storage:5002
+            - name: DEVICE_DB_PATH
+              value: /var/lib/ingestion/devices.db
+          volumeMounts:
+            - name: ingestion-devices
+              mountPath: /var/lib/ingestion
           readinessProbe:
             exec:
               command:
@@ -120,7 +128,7 @@ spec:
           image: nginx:1.30.6-alpine
           imagePullPolicy: Never
           ports:
-            - name: http
+            - name: https
               containerPort: 8080
             - name: metrics
               containerPort: 9090
@@ -128,6 +136,9 @@ spec:
             - name: proxy-config
               mountPath: /etc/nginx/nginx.conf
               subPath: nginx.conf
+              readOnly: true
+            - name: ingestion-tls
+              mountPath: /etc/ingestion-tls
               readOnly: true
           readinessProbe:
             httpGet:
@@ -139,6 +150,12 @@ spec:
         - name: proxy-config
           configMap:
             name: ingestion-proxy
+        - name: ingestion-tls
+          secret:
+            secretName: ingestion-tls
+        - name: ingestion-devices
+          persistentVolumeClaim:
+            claimName: ingestion-devices
 ---
 apiVersion: v1
 kind: Service
@@ -149,9 +166,9 @@ spec:
   selector:
     app: ingestion
   ports:
-    - name: http
+    - name: https
       port: 5001
-      targetPort: http
+      targetPort: https
 ---
 apiVersion: v1
 kind: Service
@@ -165,7 +182,7 @@ spec:
   selector:
     app: ingestion
   ports:
-    - name: http
+    - name: https
       port: 5001
-      targetPort: http
+      targetPort: https
       nodePort: 30502

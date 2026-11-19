@@ -15,12 +15,30 @@ spec:
       labels:
         app: sensor
     spec:
+      automountServiceAccountToken: false
       containers:
         - name: sensor
-          image: sensor:dev
+          image: sensor:sensor-auth
           imagePullPolicy: Never
           env:
             - name: DEVICE_ID
               value: sensor-k8s-001
             - name: INGESTION_URL
-              value: http://ingestion:5001/ingest
+              value: https://ingestion:5001/ingest
+            - name: INGESTION_CA_FILE
+              value: /etc/ingestion-ca/ca.crt
+          volumeMounts:
+            - name: sensor-api-key
+              mountPath: /run/secrets
+              readOnly: true
+            - name: ingestion-ca
+              mountPath: /etc/ingestion-ca
+              readOnly: true
+      volumes:
+        - name: sensor-api-key
+          secret:
+            secretName: sensor-api-key
+            defaultMode: 0400
+        - name: ingestion-ca
+          configMap:
+            name: ingestion-ca

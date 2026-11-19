@@ -27,4 +27,14 @@
     <options>alert_by_email</options>
     <group>suspicious_activity,</group>
   </rule>
+
+  <rule id="100203" level="5">
+    <if_sid>100200</if_sid>
+    <field name="event" type="pcre2">^ingestion_rejected$</field>
+    <field name="method" type="pcre2">^POST$</field>
+    <field name="endpoint" type="pcre2">^/ingest$</field>
+    <status type="pcre2">^(401|403)$</status>
+    <description>Ingestion rejected sensor authentication or authorization from $(srcip): $(reason)</description>
+    <group>sensor_authentication,</group>
+  </rule>
 </group>

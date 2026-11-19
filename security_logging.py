@@ -6,7 +6,7 @@ import json
 from datetime import datetime, timezone
 
 
-def log_ingestion_rejection(request, reason):
+def log_ingestion_rejection(request, reason, status=400):
     """
     Record the observed peer without logging client payloads or headers
     """
@@ -18,7 +18,7 @@ def log_ingestion_rejection(request, reason):
         "srcip": request.remote_addr,
         "method": request.method,
         "endpoint": "/ingest",
-        "status": 400,
+        "status": status,
         "reason": reason,
     }
     print(json.dumps(event, separators=(",", ":")), flush=True)

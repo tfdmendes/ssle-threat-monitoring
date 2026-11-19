@@ -3,4 +3,8 @@ __pycache__/
 *.py[cod]
 readings.db
 readings.db-*
+devices.db
+devices.db-*
+.ingestion-tls/
+.sensor-api-key
 .DS_Store

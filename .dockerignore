@@ -3,6 +3,8 @@
 !requirements.txt
 !storage.py
 !ingestion.py
+!devices.py
+!provision_sensor.py
 !instrumentation.py
 !security_logging.py
 !analytics.py
