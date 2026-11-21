@@ -59,3 +59,11 @@ On 2026-11-19, the Wazuh 4.14.10 manager loaded the Apache-scoped rule. The exis
 The firewall rules were visible for 61 seconds at the test's one-second polling resolution. The Wazuh alert ID was `1795116328.12223289`. The test used ordinary HTTP and exercised the reputation rule and firewall response. Evidence is in `/var/tmp/ssle-apache-reputation.vt57Ju/validation.log` on Kali.
 
 The original list of 609 entries was restored after the test and the disposable client was removed. The Apache-scoped rule remains installed. The pre-deployment Wazuh files are backed up at `/var/backups/ssle-apache-reputation.vt57Ju` inside `wazuh-container`.
+
+### Shellshock alert test
+
+On 2026-11-19, a single tagged synthetic record was appended to the Apache combined access log. The test exercised live log collection and alerting. The fixture stayed in the log path and no HTTP request was sent to Apache.
+
+Wazuh decoded the record as `web-accesslog`. The manager generated **Shellshock attack attempt**, rule `31166`, level 6, from `apache-container` at 19:59:58 UTC. The same alert, ID `1795118398.12242918`, was returned by the indexer from `wazuh-alerts-4.x-2026.11.19`. The synthetic source address was outside the reputation list.
+
+The Logtest output and the matching manager and indexer records are in `/var/tmp/ssle-shellshock-alert.tjHue0` on Kali.

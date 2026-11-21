@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: analytics-average
+  namespace: ssle
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: analytics.lab.test
+      http:
+        paths:
+          - path: /average
+            pathType: Exact
+            backend:
+              service:
+                name: ssle-analytics
+                port:
+                  number: 5003

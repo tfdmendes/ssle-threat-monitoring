@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Average temperature</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            font-family: system-ui, sans-serif;
+        }
+
+        body {
+            display: grid;
+            min-height: 100svh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+            place-items: center;
+            background: light-dark(#f2f5f4, #121817);
+            color: light-dark(#182522, #e7f0ed);
+        }
+
+        main {
+            box-sizing: border-box;
+            width: min(100%, 27rem);
+            padding: clamp(1.25rem, 5vw, 2.25rem);
+            border: 1px solid light-dark(#ccd8d4, #3e514a);
+            border-radius: 0.75rem;
+            background: light-dark(#fff, #1b2521);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.125rem;
+            font-weight: 650;
+        }
+
+        #average {
+            margin: 0.75rem 0;
+            font-size: 1.25rem;
+            font-weight: 650;
+        }
+
+        #average[data-value] {
+            font-size: clamp(2.25rem, 10vw, 3.75rem);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .detail {
+            margin: 0;
+            color: light-dark(#4b6058, #aebfb7);
+            font-size: 0.9375rem;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1>Average temperature</h1>
+        <p id="average" role="status">Loading…</p>
+        <p class="detail">Across all stored sensor readings</p>
+        <noscript><p>Enable JavaScript to load the average.</p></noscript>
+    </main>
+    <script>
+        const average = document.getElementById("average");
+        const temperatureFormat = new Intl.NumberFormat("en", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        });
+
+        async function refreshAverage() {
+            let label = "Average unavailable";
+            let hasValue = false;
+
+            try {
+                const response = await fetch("/api/average", { cache: "no-store" });
+                if (response.ok) {
+                    const { average_temperature: temperature } = await response.json();
+                    if (Number.isFinite(temperature)) {
+                        label = temperatureFormat.format(temperature) + " °C";
+                        hasValue = true;
+                    } else if (temperature === null) {
+                        label = "No readings yet";
+                    }
+                }
+            } catch {
+                // Keep the unavailable state and try again on the next refresh.
+            }
+
+            if (average.textContent !== label) {
+                average.textContent = label;
+            }
+            average.toggleAttribute("data-value", hasValue);
+            setTimeout(refreshAverage, 30_000);
+        }
+
+        refreshAverage();
+    </script>
+</body>
+</html>

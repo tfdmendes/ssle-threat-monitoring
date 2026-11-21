@@ -12,6 +12,8 @@ Before this change, a client that could reach `POST /ingest` could submit a nume
 
 The server binds each key to one device and checks that binding for every request. Changing the ID in the JSON no longer changes the identity attached to a stored reading. Revoking the key takes effect for checks that begin after the revocation is committed. A sensor with valid credentials can still send an inaccurate temperature. A stolen key can be used until it is revoked or rotated.
 
+The Wazuh rules define a threshold of ten credential rejections within 30 seconds from the same IP on the same agent. Rule `100204` triggers the existing `firewall-drop` command on that Node for 60 seconds. The firewall blocks traffic from the source IP, so clients sharing that IP can lose access to the Node during the block.
+
 ## Why ingestion keeps sensor credentials
 
 We kept sensor credentials in `devices.db` so ingestion can authenticate each request with a local SQLite lookup. It rejects invalid or revoked keys before contacting Storage and calls `POST /store` once for each accepted reading. Storage continues to own `readings.db`. This choice adds a separate persistent volume for credentials so sensor registrations and revocations survive ingestion Pod replacement. [Kubernetes deployment](README.md#deploy-to-kubernetes)
@@ -44,3 +46,11 @@ The external `sensor-A` ran as a systemd service in the Incus container `lab-sen
 Wazuh rule `100203` produced four alerts from the test container, one for each rejected request. Direct TCP access to Storage from the sensor Pod was refused. Analytics still reached Storage with HTTP 200 and the ingestion and health scrape targets remained up. After replacing the ingestion Pod, the two sensor registrations and the revoked test registration were still present. Both sensors then wrote new readings without receiving new keys.
 
 The test recorded a single accepted sample for `sensor-auth-check-1795029274` at 23.625 °C. Rollback metadata and test evidence are in `/var/tmp/ssle-sensor-auth.5hJtEi` on Kali.
+
+### Kali Active Response test
+
+On 2026-11-20, a disposable Incus client at `10.255.255.108` sent HTTPS requests to ingestion without an API key. The first nine received HTTP 401 without a block. The tenth, within five seconds of the first, received HTTP 401 and triggered Wazuh rule `100204`. The agent on `k3s-node1` added source-specific `DROP` entries to `INPUT` and `FORWARD`, and the next request timed out.
+
+The agent removed both entries automatically after 61 seconds, and the client received HTTP 401 again. The manager recorded events `651` and `652` for blocking and unblocking. Storage recorded 12 readings from `sensor-A` during the block and zero for the test device ID. The disposable client was removed. The live Active Response test used HTTP 401. The earlier authentication test covers the individual HTTP 403 alert.
+
+The test log is at `/var/tmp/ssle-sensor-auth-response.jWiySg/validation.log` on Kali. The original manager configuration and ingestion rules are backed up at `/var/backups/ssle-sensor-auth-response.Z2Q9hG` inside `wazuh-container`.
