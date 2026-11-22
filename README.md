@@ -16,6 +16,15 @@ Prometheus collects service health, ingestion and resource metrics. Grafana disp
 
 ![Ingestion monitoring signals from NGINX and Flask logs, Prometheus metrics and the stored SQLite reading](docs/images/monitoring-signals.png)
 
+## Video demonstrations
+
+- [Sensor spoofing and authentication](https://youtu.be/AoxhhDuXIVI)
+- [Invalid temperature readings](https://youtu.be/Cd6UT-WFMFg)
+- [Ingestion rate limiting](https://youtu.be/BF99Ci0xHdo)
+- [Spam filtering](https://youtu.be/ACPS9eKxl5U)
+- [Apache IP reputation and Shellshock detection](https://youtu.be/xFW0TtlRVsI)
+- [Service availability in Grafana](https://youtu.be/mmURuOr33tI)
+
 ## Run locally
 
 Use Python 3.13 and OpenSSL. From the repository root, create a virtual environment, generate a lab certificate and register a test sensor. The commands create a certificate directory, an API key file and a SQLite database for sensor credentials.
