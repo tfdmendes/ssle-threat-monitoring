@@ -2,6 +2,12 @@
 
 An SSLE lab project for collecting temperature readings and monitoring the availability and security of the services that handle them. A simulated sensor submits readings over HTTPS. Storage saves accepted readings in SQLite, and Analytics serves their average at `GET /average`.
 
+## AI Usage Statement
+
+GPT-6.2 Sol was used through OpenAI Codex to write most of the project code and troubleshoot implementation issues. I reviewed all AI-generated material against the project requirements and design and decided what to retain.
+
+Without AI assistance, I designed the system architecture, did the project documentation, defined service responsibilities and data flows, planned the implementation and security evaluation, and created all project diagrams.
+
 ## Architecture
 
 In the Incus lab, K3s runs the application services. NGINX terminates TLS and limits requests to `POST /ingest`. Ingestion authenticates the sensor with a per-device API key, validates the reading and returns success after Storage confirms the write. Registry records the Ingestion service at startup.
@@ -22,7 +28,7 @@ Prometheus collects service health, ingestion and resource metrics. Grafana disp
 - [Invalid temperature readings](https://youtu.be/Cd6UT-WFMFg)
 - [Ingestion rate limiting](https://youtu.be/BF99Ci0xHdo)
 - [Spam filtering](https://youtu.be/ACPS9eKxl5U)
-- [Apache IP reputation and Shellshock detection](https://youtu.be/xFW0TtlRVsI)
+- [Apache IP reputation and Shellshock detection](https://youtu.be/Qm7tUBYeq5A)
 - [Service availability in Grafana](https://youtu.be/mmURuOr33tI)
 
 ## Run locally
