@@ -6,4 +6,10 @@
     <description>Apache request from an IP on the reputation list: $(srcip)</description>
     <group>ip_reputation,</group>
   </rule>
+  <rule id="100101" level="10">
+    <if_sid>31166,31167,31168,31169</if_sid>
+    <location type="pcre2">^\(apache-container\) [^>]+->/var/log/apache2/access\.log$</location>
+    <description>Apache Shellshock signature from $(srcip)</description>
+    <group>shellshock,</group>
+  </rule>
 </group>
